@@ -1,10 +1,8 @@
 name: Post Matches to Blogger
-
 on:
   schedule:
-    - cron: '0 */6 * * *' 
+    - cron: '0 */6 * * *'  
   workflow_dispatch:
-
 jobs:
   post-matches:
     runs-on: ubuntu-latest
@@ -41,12 +39,17 @@ jobs:
         
         if [[ "$ACCESS_TOKEN" == "null" || -z "$ACCESS_TOKEN" ]]; then
           echo "❌ Failed to generate access token"
-          echo "Response: $RESPONSE"
           exit 1
         fi
         
+        echo "::add-mask::$ACCESS_TOKEN"
         echo "✅ Access token generated successfully"
-        echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+        
+        {
+          echo "ACCESS_TOKEN<<EOF"
+          echo "$ACCESS_TOKEN"
+          echo "EOF"
+        } >> $GITHUB_ENV
     
     - name: Run match posting script
       env:

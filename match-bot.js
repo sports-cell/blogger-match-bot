@@ -406,187 +406,184 @@ function cleanIframeContent(iframeData) {
 }
 
 async function createPost(match) {
-  try {
-    const title = `${match.homeTeam} vs ${match.awayTeam} - ${match.league}`;
-    
-    const exists = await checkPostExists(title);
-    if (exists) {
-      console.log(`Post already exists: ${title}`);
-      
-      if (match.date === 'today' && isMatchCurrentOrFuture(match.time)) {
-        try {
-          const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(title)}&key=${API_KEY}`;
-          const response = await axios.get(searchUrl);
-          
-          if (response.data.items && response.data.items.length > 0) {
-            const existingPost = response.data.items[0];
-            
-            const postDate = existingPost.published.split('T')[0];
-            const today = new Date().toISOString().split('T')[0];
-            
-            if (postDate === today) {
-              await storeUrlMapping(match, existingPost.url, existingPost.published);
-              console.log(`📝 Registered existing current/future post: ${title}`);
-              return { existing: true, title: title };
-            } else {
-              console.log(`⏰ Existing post is from ${postDate}, not today (${today}) - skipping registration`);
-              return { existing: false, reason: 'old_date' };
-            }
-          }
-        } catch (error) {
-          console.error('Error registering existing post:', error);
-        }
-      } else {
-        console.log(`⏰ Existing post is not current/future today - skipping registration`);
-        return { existing: false, reason: 'not_current_future' };
-      }
-      
-      return { existing: false, reason: 'not_tracked' };
-    }
-    
-    console.log(`Creating post for: ${title}`);
-    
-    const iframeData = await extractIframeFromMatch(match.matchLink);
-    
-    let playerSection;
-    if (iframeData) {
-      const cleanContent = cleanIframeContent(iframeData);
-      playerSection = `
-        <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
-          <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 22px); text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">🎥 مشاهدة المباراة مباشرة</h3>
-          ${cleanContent}
-          <p style="margin-top: 15px; color: #ccc; font-size: 14px;">اضغط على زر التشغيل لبدء المشاهدة</p>
-        </div>`;
-    } else {
-      playerSection = `
-        <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.15);">
-          <div class="player-container">
-            <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 20px); text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">⏰ سيتم إضافة بث المباراة قبل موعد المباراة</h3>
-          </div>
-        </div>`;
-    }
-    
-    const content = `
-      <style>
-        @media (max-width: 768px) {
-          .match-teams {
-            flex-direction: column !important;
-            gap: 20px;
-          }
-          .team img {
-            width: 80px !important;
-            height: 80px !important;
-          }
-          .match-time {
-            margin: 0 !important;
-            order: -1;
-          }
-        }
-        @media (max-width: 480px) {
-          .team img {
-            width: 60px !important;
-            height: 60px !important;
-          }
-        }
-        .external-link, .original-link {
-          display: none !important;
-        }
-      </style>
-      
-      <div class="match-details" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; text-align: center; width: 100%; padding: 15px; background: #ffffff; box-sizing: border-box;">
-        <h2 style="color: #1976d2; margin-bottom: 25px; font-size: clamp(24px, 6vw, 32px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">🏆 ${match.league}</h2>
-        
-        <div class="teams match-teams" style="display: flex; align-items: center; justify-content: space-between; margin: 25px 0; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 20px; box-shadow: 0 6px 15px rgba(0,0,0,0.08); border: 1px solid #dee2e6; flex-wrap: wrap;">
-          <div class="team home" style="text-align: center; flex: 1; min-width: 150px;">
-            ${match.homeTeamLogo ? `<img src="${match.homeTeamLogo}" alt="${match.homeTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
-            <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.homeTeam}</h3>
-          </div>
-          
-          <div class="match-time" style="text-align: center; flex: 0 0 auto; margin: 0 20px; padding: 20px; background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%); border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 2px solid #1976d2; min-width: 150px;">
-            <p style="font-size: clamp(28px, 8vw, 36px); font-weight: bold; color: #1976d2; margin: 8px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">⏰ ${match.time}</p>
-            <p style="font-size: clamp(16px, 4vw, 20px); color: #666; margin: 8px 0; font-weight: 600; background: #e3f2fd; padding: 8px 15px; border-radius: 20px;">اليوم</p>
-          </div>
-          
-          <div class="team away" style="text-align: center; flex: 1; min-width: 150px;">
-            ${match.awayTeamLogo ? `<img src="${match.awayTeamLogo}" alt="${match.awayTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
-            <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.awayTeam}</h3>
-          </div>
-        </div>
-        
-        <div class="match-info" style="margin: clamp(15px, 4vw, 25px) 0; width: 100%; padding: clamp(15px, 4vw, 25px); background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: clamp(12px, 3vw, 18px); box-shadow: 0 clamp(4px, 1.5vw, 8px) clamp(10px, 3vw, 20px) rgba(102, 126, 234, 0.3); position: relative; overflow: hidden;">
-          <div style="position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none;"></div>
-          <div style="position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 12px); flex-wrap: wrap;">
-            <div style="background: rgba(255,255,255,0.15); padding: clamp(8px, 2vw, 12px); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
-              <span style="font-size: clamp(20px, 5vw, 28px); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">📺</span>
-            </div>
-            <p style="margin: 0; font-size: clamp(14px, 3.5vw, 18px); font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.4); text-align: center; line-height: 1.4; letter-spacing: 0.5px;">
-              <span style="display: block; font-size: clamp(12px, 3vw, 14px); opacity: 0.9; margin-bottom: 2px;">القناة الناقلة</span>
-              <span style="font-size: clamp(16px, 4vw, 20px); font-weight: 700;">${match.broadcaster}</span>
-            </p>
-          </div>
-          <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.7), rgba(255,255,255,0.3));"></div>
-        </div>
-        
-        ${playerSection}
-        
-        <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 15px; border-left: 6px solid #4caf50; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.2);">
-          <p style="margin: 0; color: #2e7d32; font-size: clamp(14px, 4vw, 18px); font-weight: 600; text-shadow: 1px 1px 2px rgba(0,0,0,0.05);">💡 استمتع بمشاهدة المباراة بجودة عالية ومجاناً على موقعنا</p>
-        </div>
-        
-        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; border-top: 3px solid #17a2b8;">
-          <p style="margin: 0; color: #6c757d; font-size: clamp(12px, 3vw, 14px); font-style: italic;">تابعونا للحصول على أحدث مباريات كرة القدم وأهم الأحداث الرياضية</p>
-        </div>
-      </div>
-    `;
-    
-    const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
-    
-    const postData = {
-      kind: 'blogger#post',
-      blog: { id: BLOG_ID },
-      title: title,
-      content: content
-    };
-    
-    const response = await makeAuthenticatedRequest(url, postData, 'POST');
-    
-    await storeUrlMapping(match, response.data.url, response.data.published);
-    
-    console.log(`✅ Post created: ${response.data.url}`);
-    return response.data;
-  } catch (error) {
-    if (error.response?.status === 403) {
-      const errorMessage = error.response?.data?.error?.message || 'Rate limit exceeded';
-      if (errorMessage.includes('limit') || errorMessage.includes('timeframe')) {
-        console.log(`⏸️  Rate limit hit for: ${match.homeTeam} vs ${match.awayTeam}`);
-        console.log(`⏳ Waiting 5 minutes before retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 300000));
-        
-        try {
-          const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
-          const postData = {
-            kind: 'blogger#post',
-            blog: { id: BLOG_ID },
-            title: `${match.homeTeam} vs ${match.awayTeam} - ${match.league}`,
-            content: content
-          };
-          
-          const retryResponse = await makeAuthenticatedRequest(url, postData, 'POST');
-          await storeUrlMapping(match, retryResponse.data.url, retryResponse.data.published);
-          console.log(`✅ Post created after retry: ${retryResponse.data.url}`);
-          return retryResponse.data;
-        } catch (retryError) {
-          console.log(`❌ Still rate limited after 5 minutes, skipping: ${match.homeTeam} vs ${match.awayTeam}`);
-          return { skipped: true, reason: 'rate_limit' };
-        }
-      }
-    }
-    
-    console.error('❌ Error creating post:', error.response?.data || error.message);
-    return null;
-  }
+ try {
+   const today = new Date().toLocaleDateString('en-GB', { 
+     year: 'numeric', 
+     month: '2-digit', 
+     day: '2-digit' 
+   }).split('/').reverse().join('-');
+   
+   const title = `${match.homeTeam} vs ${match.awayTeam} - ${match.league} - ${today}`;
+   
+   const exists = await checkPostExists(title);
+   if (exists) {
+     console.log(`Post already exists: ${title}`);
+     
+     try {
+       const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(title)}&key=${API_KEY}`;
+       const response = await axios.get(searchUrl);
+       
+       if (response.data.items && response.data.items.length > 0) {
+         const existingPost = response.data.items[0];
+         await storeUrlMapping(match, existingPost.url, existingPost.published);
+         console.log(`📝 Registered existing post: ${title}`);
+         return { existing: true, title: title, url: existingPost.url };
+       }
+     } catch (error) {
+       console.error('Error registering existing post:', error);
+     }
+     
+     return { skipped: true, reason: 'exists_but_not_found' };
+   }
+   
+   console.log(`Creating post for: ${title}`);
+   
+   const iframeData = await extractIframeFromMatch(match.matchLink);
+   
+   let playerSection;
+   if (iframeData) {
+     const cleanContent = cleanIframeContent(iframeData);
+     playerSection = `
+       <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
+         <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 22px); text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">🎥 مشاهدة المباراة مباشرة</h3>
+         ${cleanContent}
+         <p style="margin-top: 15px; color: #ccc; font-size: 14px;">اضغط على زر التشغيل لبدء المشاهدة</p>
+       </div>`;
+   } else {
+     playerSection = `
+       <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.15);">
+         <div class="player-container">
+           <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 20px); text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">⏰ سيتم إضافة بث المباراة قبل موعد المباراة</h3>
+         </div>
+       </div>`;
+   }
+   
+   const content = `
+     <style>
+       @media (max-width: 768px) {
+         .match-teams {
+           flex-direction: column !important;
+           gap: 20px;
+         }
+         .team img {
+           width: 80px !important;
+           height: 80px !important;
+         }
+         .match-time {
+           margin: 0 !important;
+           order: -1;
+         }
+       }
+       @media (max-width: 480px) {
+         .team img {
+           width: 60px !important;
+           height: 60px !important;
+         }
+       }
+       .external-link, .original-link {
+         display: none !important;
+       }
+     </style>
+     
+     <div class="match-details" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; text-align: center; width: 100%; padding: 15px; background: #ffffff; box-sizing: border-box;">
+       <h2 style="color: #1976d2; margin-bottom: 25px; font-size: clamp(24px, 6vw, 32px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">🏆 ${match.league}</h2>
+       
+       <div class="teams match-teams" style="display: flex; align-items: center; justify-content: space-between; margin: 25px 0; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 20px; box-shadow: 0 6px 15px rgba(0,0,0,0.08); border: 1px solid #dee2e6; flex-wrap: wrap;">
+         <div class="team home" style="text-align: center; flex: 1; min-width: 150px;">
+           ${match.homeTeamLogo ? `<img src="${match.homeTeamLogo}" alt="${match.homeTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
+           <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.homeTeam}</h3>
+         </div>
+         
+         <div class="match-time" style="text-align: center; flex: 0 0 auto; margin: 0 20px; padding: 20px; background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%); border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 2px solid #1976d2; min-width: 150px;">
+           <p style="font-size: clamp(28px, 8vw, 36px); font-weight: bold; color: #1976d2; margin: 8px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">⏰ ${match.time}</p>
+           <p style="font-size: clamp(16px, 4vw, 20px); color: #666; margin: 8px 0; font-weight: 600; background: #e3f2fd; padding: 8px 15px; border-radius: 20px;">اليوم</p>
+         </div>
+         
+         <div class="team away" style="text-align: center; flex: 1; min-width: 150px;">
+           ${match.awayTeamLogo ? `<img src="${match.awayTeamLogo}" alt="${match.awayTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
+           <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.awayTeam}</h3>
+         </div>
+       </div>
+       
+       <div class="match-info" style="margin: clamp(15px, 4vw, 25px) 0; width: 100%; padding: clamp(15px, 4vw, 25px); background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: clamp(12px, 3vw, 18px); box-shadow: 0 clamp(4px, 1.5vw, 8px) clamp(10px, 3vw, 20px) rgba(102, 126, 234, 0.3); position: relative; overflow: hidden;">
+         <div style="position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none;"></div>
+         <div style="position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 12px); flex-wrap: wrap;">
+           <div style="background: rgba(255,255,255,0.15); padding: clamp(8px, 2vw, 12px); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+             <span style="font-size: clamp(20px, 5vw, 28px); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">📺</span>
+           </div>
+           <p style="margin: 0; font-size: clamp(14px, 3.5vw, 18px); font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.4); text-align: center; line-height: 1.4; letter-spacing: 0.5px;">
+             <span style="display: block; font-size: clamp(12px, 3vw, 14px); opacity: 0.9; margin-bottom: 2px;">القناة الناقلة</span>
+             <span style="font-size: clamp(16px, 4vw, 20px); font-weight: 700;">${match.broadcaster}</span>
+           </p>
+         </div>
+         <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.7), rgba(255,255,255,0.3));"></div>
+       </div>
+       
+       ${playerSection}
+       
+       <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 15px; border-left: 6px solid #4caf50; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.2);">
+         <p style="margin: 0; color: #2e7d32; font-size: clamp(14px, 4vw, 18px); font-weight: 600; text-shadow: 1px 1px 2px rgba(0,0,0,0.05);">💡 استمتع بمشاهدة المباراة بجودة عالية ومجاناً على موقعنا</p>
+       </div>
+       
+       <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; border-top: 3px solid #17a2b8;">
+         <p style="margin: 0; color: #6c757d; font-size: clamp(12px, 3vw, 14px); font-style: italic;">تابعونا للحصول على أحدث مباريات كرة القدم وأهم الأحداث الرياضية</p>
+       </div>
+     </div>
+   `;
+   
+   const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
+   
+   const postData = {
+     kind: 'blogger#post',
+     blog: { id: BLOG_ID },
+     title: title,
+     content: content
+   };
+   
+   const response = await makeAuthenticatedRequest(url, postData, 'POST');
+   
+   await storeUrlMapping(match, response.data.url, response.data.published);
+   
+   console.log(`✅ Post created: ${response.data.url}`);
+   return { created: true, title: title, url: response.data.url, data: response.data };
+ } catch (error) {
+   if (error.response?.status === 403) {
+     const errorMessage = error.response?.data?.error?.message || 'Rate limit exceeded';
+     if (errorMessage.includes('limit') || errorMessage.includes('timeframe')) {
+       console.log(`⏸️  Rate limit hit for: ${match.homeTeam} vs ${match.awayTeam}`);
+       console.log(`⏳ Waiting 5 minutes before retrying...`);
+       await new Promise(resolve => setTimeout(resolve, 300000));
+       
+       try {
+         const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
+         const today = new Date().toLocaleDateString('en-GB', { 
+           year: 'numeric', 
+           month: '2-digit', 
+           day: '2-digit' 
+         }).split('/').reverse().join('-');
+         
+         const postData = {
+           kind: 'blogger#post',
+           blog: { id: BLOG_ID },
+           title: `${match.homeTeam} vs ${match.awayTeam} - ${match.league} - ${today}`,
+           content: content
+         };
+         
+         const retryResponse = await makeAuthenticatedRequest(url, postData, 'POST');
+         await storeUrlMapping(match, retryResponse.data.url, retryResponse.data.published);
+         console.log(`✅ Post created after retry: ${retryResponse.data.url}`);
+         return { created: true, title: postData.title, url: retryResponse.data.url, data: retryResponse.data };
+       } catch (retryError) {
+         console.log(`❌ Still rate limited after 5 minutes, skipping: ${match.homeTeam} vs ${match.awayTeam}`);
+         return { skipped: true, reason: 'rate_limit' };
+       }
+     }
+   }
+   
+   console.error('❌ Error creating post:', error.response?.data || error.message);
+   return { error: true, message: error.response?.data || error.message };
+ }
 }
-
 async function createMatchPosts() {
   try {
     console.log('🚀 Starting to create match posts with filtering...');
@@ -618,26 +615,26 @@ async function createMatchPosts() {
     let existingCount = 0;
     
     console.log('\n⚽ Processing today\'s current and future matches...');
-    for (const match of filteredTodayMatches) {
-      console.log(`\n⚽ Processing: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
-      const post = await createPost(match);
-      
-      if (post && post.skipped) {
-        skippedCount++;
-      } else if (post && post.existing) {
-        existingCount++;
-      } else if (post) {
-        createdCount++;
-      }
-      
-      if (createdCount > 0) {
-        console.log('⏳ Waiting 30 seconds to respect Blogger rate limits...');
-        await new Promise(resolve => setTimeout(resolve, 30000));
-      } else {
-        console.log('⏳ Waiting 5 seconds before next attempt...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    }
+for (const match of filteredTodayMatches) {
+  console.log(`\n⚽ Processing: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
+  const result = await createPost(match);
+  
+  if (result && result.skipped) {
+    skippedCount++;
+  } else if (result && result.existing) {
+    existingCount++;
+  } else if (result && result.created) {
+    createdCount++;
+  }
+  
+  if (result && (result.created || result.existing)) {
+    console.log('⏳ Waiting 30 seconds to respect Blogger rate limits...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
+  } else {
+    console.log('⏳ Waiting 5 seconds before next attempt...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+}
     
     console.log(`\n🎉 Processing Complete!`);
     console.log(`   ✅ Created ${createdCount} new match posts`);

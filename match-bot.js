@@ -280,6 +280,146 @@ async function extractIframeFromMatch(matchUrl) {
   }
 }
 
+async function postHasIframe(postId) {
+  try {
+    const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/${postId}?key=${API_KEY}`;
+    const response = await axios.get(url);
+    
+    const content = response.data.content;
+    
+    const hasValidIframe = content.includes('<iframe') && 
+                          !content.includes('سيتم إضافة بث المباراة قبل موعد المباراة');
+    
+    return hasValidIframe;
+  } catch (error) {
+    console.error(`Error checking iframe for post ${postId}:`, error.message);
+    return false;
+  }
+}
+
+async function updatePostWithIframe(postId, iframeData) {
+  try {
+    console.log(`🔄 Updating post ${postId} with new iframe...`);
+    
+    const getUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/${postId}?key=${API_KEY}`;
+    const getResponse = await axios.get(getUrl);
+    const currentPost = getResponse.data;
+    
+    const cleanContent = cleanIframeContent(iframeData);
+    const newPlayerSection = `
+      <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
+        <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 22px); text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">🎥 مشاهدة المباراة مباشرة</h3>
+        ${cleanContent}
+        <p style="margin-top: 15px; color: #ccc; font-size: 14px;">اضغط على زر التشغيل لبدء المشاهدة</p>
+      </div>`;
+    
+    let updatedContent = currentPost.content;
+    
+    const placeholderRegex = /<div id="match-player"[^>]*>[\s\S]*?سيتم إضافة بث المباراة قبل موعد المباراة[\s\S]*?<\/div>/g;
+    
+    if (placeholderRegex.test(updatedContent)) {
+      updatedContent = updatedContent.replace(placeholderRegex, newPlayerSection);
+      console.log(`✅ Replaced placeholder with live iframe`);
+    }
+    
+    const updateUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/${postId}`;
+    const updateData = {
+      kind: 'blogger#post',
+      id: postId,
+      blog: { id: BLOG_ID },
+      title: currentPost.title,
+      content: updatedContent
+    };
+    
+    await makeAuthenticatedRequest(updateUrl, updateData, 'PUT');
+    console.log(`✅ Post updated successfully`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error updating post:`, error.response?.data || error.message);
+    return false;
+  }
+}
+
+async function loadUrlMappings() {
+  try {
+    const data = await fs.readFile('./match-urls.json', 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    return {};
+  }
+}
+
+async function updateIframeStatus(matchKey, hasIframe) {
+  try {
+    const mappings = await loadUrlMappings();
+    if (mappings[matchKey]) {
+      mappings[matchKey].hasIframe = hasIframe;
+      mappings[matchKey].lastIframeCheck = new Date().toISOString();
+      await fs.writeFile('./match-urls.json', JSON.stringify(mappings, null, 2));
+    }
+  } catch (error) {
+    console.error('Error updating iframe status:', error);
+  }
+}
+
+async function monitorIframes() {
+  console.log('🎯 Checking for new iframes...');
+  
+  const mappings = await loadUrlMappings();
+  
+  const matchesNeedingIframes = Object.entries(mappings).filter(([key, data]) => {
+    return data.date === 'today' && !data.hasIframe;
+  });
+  
+  if (matchesNeedingIframes.length === 0) {
+    console.log('ℹ️ No matches need iframe updates');
+    return;
+  }
+  
+  console.log(`🔍 Checking ${matchesNeedingIframes.length} matches for iframes...`);
+  
+  for (const [matchKey, matchData] of matchesNeedingIframes) {
+    try {
+      const postIdMatch = matchData.url.match(/\/(\d+)\.html/);
+      if (!postIdMatch) continue;
+      
+      const postId = postIdMatch[1];
+      
+      if (await postHasIframe(postId)) {
+        await updateIframeStatus(matchKey, true);
+        console.log(`✅ ${matchData.readableKey} already has iframe`);
+        continue;
+      }
+      
+      const currentMatches = await fetchMatches('today');
+      const foundMatch = currentMatches.find(m => 
+        m.homeTeam === matchData.homeTeam && 
+        m.awayTeam === matchData.awayTeam
+      );
+      
+      if (foundMatch?.matchLink) {
+        const iframeData = await extractIframeFromMatch(foundMatch.matchLink);
+        
+        if (iframeData) {
+          console.log(`🎯 Found iframe for: ${matchData.readableKey}`);
+          
+          if (await updatePostWithIframe(postId, iframeData)) {
+            await updateIframeStatus(matchKey, true);
+            console.log(`✅ Updated post with iframe`);
+          }
+        } else {
+          console.log(`❌ No iframe yet for: ${matchData.readableKey}`);
+        }
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+    } catch (error) {
+      console.error(`❌ Error checking ${matchData.readableKey}:`, error.message);
+    }
+  }
+}
+
 async function checkPostExists(title) {
   try {
     const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(title)}&key=${API_KEY}`;
@@ -328,7 +468,8 @@ async function storeUrlMapping(match, actualUrl, publishedDate) {
       date: match.date,
       published: publishedDate,
       lastUpdated: new Date().toISOString(),
-      readableKey: readableKey 
+      readableKey: readableKey,
+      hasIframe: false
     };
     
     await fs.writeFile(path, JSON.stringify(mappings, null, 2));
@@ -584,6 +725,7 @@ async function createPost(match) {
    return { error: true, message: error.response?.data || error.message };
  }
 }
+
 async function createMatchPosts() {
   try {
     console.log('🚀 Starting to create match posts with filtering...');
@@ -615,26 +757,26 @@ async function createMatchPosts() {
     let existingCount = 0;
     
     console.log('\n⚽ Processing today\'s current and future matches...');
-for (const match of filteredTodayMatches) {
-  console.log(`\n⚽ Processing: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
-  const result = await createPost(match);
-  
-  if (result && result.skipped) {
-    skippedCount++;
-  } else if (result && result.existing) {
-    existingCount++;
-  } else if (result && result.created) {
-    createdCount++;
-  }
-  
-  if (result && (result.created || result.existing)) {
-    console.log('⏳ Waiting 30 seconds to respect Blogger rate limits...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
-  } else {
-    console.log('⏳ Waiting 5 seconds before next attempt...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
-  }
-}
+    for (const match of filteredTodayMatches) {
+      console.log(`\n⚽ Processing: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
+      const result = await createPost(match);
+      
+      if (result && result.skipped) {
+        skippedCount++;
+      } else if (result && result.existing) {
+        existingCount++;
+      } else if (result && result.created) {
+        createdCount++;
+      }
+      
+      if (result && (result.created || result.existing)) {
+        console.log('⏳ Waiting 30 seconds to respect Blogger rate limits...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      } else {
+        console.log('⏳ Waiting 5 seconds before next attempt...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
     
     console.log(`\n🎉 Processing Complete!`);
     console.log(`   ✅ Created ${createdCount} new match posts`);
@@ -650,3 +792,11 @@ for (const match of filteredTodayMatches) {
 }
 
 createMatchPosts();
+
+setInterval(async () => {
+  console.log(`\n⏰ Running iframe check at ${new Date().toLocaleTimeString()}`);
+  await monitorIframes();
+}, 3 * 60 * 1000);
+
+console.log('🚀 Starting iframe monitoring...');
+monitorIframes();

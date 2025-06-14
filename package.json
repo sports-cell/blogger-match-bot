@@ -1,14 +1,26 @@
 {
-  "name": "blogger-match-bot",
+  "name": "match-posts-updater",
   "version": "1.0.0",
-  "description": "Bot to post matches to Blogger",
-  "main": "match-bot.js",
+  "description": "Updates match posts with reports instead of deleting them",
+  "main": "update-match-posts.js",
   "scripts": {
-    "start": "node match-bot.js"
+    "update": "node update-match-posts.js",
+    "clean": "node clean-url-mappings.js",
+    "start": "npm run update && npm run clean"
   },
   "dependencies": {
-    "axios": "^0.27.2",
-    "cheerio": "^1.0.0-rc.12",
-    "googleapis": "^129.0.0"
-  }
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "GitHub Actions",
+  "license": "MIT",
+  "keywords": [
+    "blogger",
+    "football",
+    "matches",
+    "automation",
+    "github-actions"
+  ]
 }

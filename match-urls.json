@@ -120,24 +120,24 @@
     "readableKey": "إنبي vs البنك الاهلي (today)"
   },
   "2LPZhNmI2YHYp9mD2YrYpyDYqtit2Kog": {
-    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-11.html",
+    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-14_27.html",
     "homeTeam": "سلوفاكيا تحت 21",
-    "awayTeam": "إسبانيا تحت 21",
-    "league": "أوروبا, كأس أوروبا تحت 21 عاما",
+    "awayTeam": "ايطاليا تحت 21",
+    "league": "أوروبا, كأس أوروبا تحت 21 عاما - المجموعة أ",
     "date": "today",
-    "published": "2025-06-10T23:53:00-07:00",
-    "lastUpdated": "2025-06-11T13:44:40.335Z",
-    "readableKey": "سلوفاكيا تحت 21 vs إسبانيا تحت 21 (today)"
+    "published": "2025-06-14T04:35:00-07:00",
+    "lastUpdated": "2025-06-14T11:35:45.297Z",
+    "readableKey": "سلوفاكيا تحت 21 vs ايطاليا تحت 21 (today)"
   },
   "2KfZhNio2LHYqti62KfZhCDYqtit2Kog": {
-    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-11_10.html",
+    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-14_53.html",
     "homeTeam": "البرتغال تحت 21",
-    "awayTeam": "فرنسا تحت 21",
-    "league": "أوروبا, كأس أوروبا تحت 21 عاما",
+    "awayTeam": "بولندا تحت 21",
+    "league": "أوروبا, كأس أوروبا تحت 21 عاما - المجموعة ج",
     "date": "today",
-    "published": "2025-06-10T23:54:00-07:00",
-    "lastUpdated": "2025-06-11T13:45:41.525Z",
-    "readableKey": "البرتغال تحت 21 vs فرنسا تحت 21 (today)"
+    "published": "2025-06-14T04:35:00-07:00",
+    "lastUpdated": "2025-06-14T11:35:10.425Z",
+    "readableKey": "البرتغال تحت 21 vs بولندا تحت 21 (today)"
   },
   "2KfZiti32KfZhNmK2Kcg2KrYrdiqIDIx": {
     "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-11_72.html",
@@ -158,5 +158,55 @@
     "published": "2025-06-10T23:55:00-07:00",
     "lastUpdated": "2025-06-11T13:45:10.931Z",
     "readableKey": "الرجاء البيضاوي vs النادي المكناسي (today)"
+  },
+  "2KXZhtis2YTYqtix2Kcg2KrYrdiqIDE5": {
+    "url": "http://www.sportlive.space/2025/06/19-vs-19-19-2025-06-14.html",
+    "homeTeam": "إنجلترا تحت 19",
+    "awayTeam": "النرويج تحت 19",
+    "league": "أوروبا, يورو تحت الـ19 - المجموعة ب",
+    "date": "today",
+    "published": "2025-06-14T04:32:00-07:00",
+    "lastUpdated": "2025-06-14T11:32:16.953Z",
+    "readableKey": "إنجلترا تحت 19 vs النرويج تحت 19 (today)"
+  },
+  "2YXYp9mE2Yog2KrYrdiqIDIwX3ZzX9in": {
+    "url": "http://www.sportlive.space/2025/06/20-vs-20-placement-playoffs-7th-place.html",
+    "homeTeam": "مالي تحت 20",
+    "awayTeam": "اليابان تحت 20",
+    "league": "دولي, بطولة تولون - Placement Playoffs - 7th Place",
+    "date": "today",
+    "published": "2025-06-14T04:32:00-07:00",
+    "lastUpdated": "2025-06-14T11:32:50.326Z",
+    "readableKey": "مالي تحت 20 vs اليابان تحت 20 (today)"
+  },
+  "2KXYs9io2KfZhtmK2Kcg2KrYrdiqIDIx": {
+    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-14.html",
+    "homeTeam": "إسبانيا تحت 21",
+    "awayTeam": "رومانيا تحت 21",
+    "league": "أوروبا, كأس أوروبا تحت 21 عاما - المجموعة أ",
+    "date": "today",
+    "published": "2025-06-14T04:33:00-07:00",
+    "lastUpdated": "2025-06-14T11:33:23.341Z",
+    "readableKey": "إسبانيا تحت 21 vs رومانيا تحت 21 (today)"
+  },
+  "2KPZhNmF2KfZhtmK2Kcg2KrYrdiqIDE5": {
+    "url": "http://www.sportlive.space/2025/06/19-vs-netherlands-u19-19-2025-06-14.html",
+    "homeTeam": "ألمانيا تحت 19",
+    "awayTeam": "Netherlands U19",
+    "league": "أوروبا, يورو تحت الـ19 - المجموعة ب",
+    "date": "today",
+    "published": "2025-06-14T04:34:00-07:00",
+    "lastUpdated": "2025-06-14T11:34:01.945Z",
+    "readableKey": "ألمانيا تحت 19 vs Netherlands U19 (today)"
+  },
+  "2YHYsdmG2LPYpyDYqtit2KogMjFfdnNf": {
+    "url": "http://www.sportlive.space/2025/06/21-vs-21-21-2025-06-14_14.html",
+    "homeTeam": "فرنسا تحت 21",
+    "awayTeam": "جورجيا تحت 21",
+    "league": "أوروبا, كأس أوروبا تحت 21 عاما - المجموعة ج",
+    "date": "today",
+    "published": "2025-06-14T04:34:00-07:00",
+    "lastUpdated": "2025-06-14T11:34:37.160Z",
+    "readableKey": "فرنسا تحت 21 vs جورجيا تحت 21 (today)"
   }
 }

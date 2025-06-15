@@ -514,12 +514,8 @@ async function updateMatchPosts() {
         reason = 'Yesterday\'s match - converting to report';
       } 
       else if (dateCategory === 'today') {
-        if (postAge > 3) {
-          shouldUpdate = true;
-          reason = `Today's match is ${postAge.toFixed(1)} hours old - converting to report`;
-        } else {
-          reason = `Today's match is only ${postAge.toFixed(1)} hours old - keeping as live`;
-        }
+        shouldUpdate = false;
+        reason = `Today's match - keeping as live post`;
       }
       
       console.log(`🎯 Decision: ${shouldUpdate ? 'CONVERT TO REPORT' : 'KEEP AS IS'} - ${reason}`);

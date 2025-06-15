@@ -290,6 +290,144 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
 
   ${events.length > 0 ? `
   <div class="events-section" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">⚽</span>
+      أحداث المباراة المهمة
+    </h3>
+    <div class="events-timeline">
+      ${events.slice(0, 15).map(event => `
+        <div style="display: flex; align-items: center; gap: 3%; padding: 2%; margin-bottom: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid ${headerColor};">
+          <div style="background: ${headerColor}; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">${event.minute}'</div>
+          <span style="font-size: 20px;">${event.icon}</span>
+          <div style="flex: 1;">
+            <p style="margin: 0; color: #2c3e50; font-size: clamp(13px, 2.8vw, 15px); font-weight: bold;">${event.player}</p>
+            <p style="margin: 0; color: #7f8c8d; font-size: clamp(11px, 2.5vw, 13px);">${event.type}</p>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  ` : ''}
+
+  ${homeLineup.length > 0 || awayLineup.length > 0 ? `
+  <div class="lineups-section" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">👥</span>
+      تشكيلة الفريقين
+    </h3>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3%; margin-top: 2%;">
+      ${homeLineup.length > 0 ? `
+      <div style="padding: 3%; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 10px; border-left: 4px solid #4caf50;">
+        <h4 style="margin: 0 0 2% 0; color: #2e7d32; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${homeTeam}</h4>
+        ${homeLineup.slice(0, 11).map(player => `
+          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(46, 125, 50, 0.1);">
+            <div style="background: #4caf50; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
+            <div style="flex: 1;">
+              <p style="margin: 0; color: #2e7d32; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
+              <p style="margin: 0; color: #66bb6a; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+      
+      ${awayLineup.length > 0 ? `
+      <div style="padding: 3%; background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-radius: 10px; border-left: 4px solid #f44336;">
+        <h4 style="margin: 0 0 2% 0; color: #c62828; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${awayTeam}</h4>
+        ${awayLineup.slice(0, 11).map(player => `
+          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(198, 40, 40, 0.1);">
+            <div style="background: #f44336; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
+            <div style="flex: 1;">
+              <p style="margin: 0; color: #c62828; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
+              <p style="margin: 0; color: #ef5350; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+    </div>
+  </div>
+  ` : ''}
+  
+  <div class="match-info" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">📋</span>
+      معلومات المباراة
+    </h3>
+    
+    <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2%;">
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">🏆</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">البطولة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${league || 'غير محدد'}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">📅</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">التاريخ</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${publishedDateFormatted}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">🎯</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">النتيجة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${finalScore}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">📊</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">أحداث المباراة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${events.length} حدث</p>
+      </div>
+      
+    </div>
+  </div>
+  
+  <div class="summary-section" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); padding: 3%; border-radius: 12px; margin-bottom: 3%; border: 1px solid #e9ecef;">
+    <h3 style="color: ${headerColor}; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">🎯</span>
+      ملخص المباراة
+    </h3>
+    
+    <div style="color: #2c3e50; line-height: 1.8; font-size: clamp(14px, 3vw, 16px);">
+      <p style="margin: 0 0 2% 0;">
+        <strong style="color: ${headerColor};">انتهت المباراة</strong> بين فريق <strong>${homeTeam}</strong> وفريق <strong>${awayTeam}</strong> 
+        في إطار منافسات <strong>${league || 'البطولة'}</strong>
+        ${found ? ` بنتيجة <strong style="color: ${headerColor};">${finalScore}</strong>` : ''}.
+      </p>
+      
+      ${found && events.length > 0 ? `
+        <div style="padding: 2%; background: ${homeScore > awayScore ? '#e8f5e8' : awayScore > homeScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; border-left: 4px solid ${homeScore > awayScore ? '#4caf50' : awayScore > homeScore ? '#f44336' : '#ff9800'}; margin: 2% 0;">
+          <p style="margin: 0; color: ${homeScore > awayScore ? '#2e7d32' : awayScore > homeScore ? '#c62828' : '#f57c00'}; font-weight: bold;">
+            ${homeScore > awayScore ? `🏆 فوز ${homeTeam} بنتيجة ${homeScore}-${awayScore}` : 
+              awayScore > homeScore ? `🏆 فوز ${awayTeam} بنتيجة ${awayScore}-${homeScore}` : 
+              `🤝 تعادل الفريقين بنتيجة ${homeScore}-${awayScore}`}
+          </p>
+          <p style="margin: 1% 0 0 0; color: #666; font-size: clamp(12px, 2.5vw, 14px);">
+            شهدت المباراة ${events.length} حدث مهم مع عروض مثيرة من الفريقين.
+          </p>
+        </div>
+      ` : `
+        <div style="padding: 2%; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; margin: 2% 0;">
+          <p style="margin: 0; color: #856404; font-weight: bold;">
+          📊 للحصول على المزيد من التفاصيل والإحصائيات، يرجى متابعة القنوات الرياضية المختصة.
+          </p>
+        </div>
+      `}
+    </div>
+  </div>
+  
+  <div class="links-section" style="background: white; padding: 3%; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
     <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(16px, 3.5vw, 20px); display: flex; align-items: center; gap: 2%;">
       <span style="background: ${headerColor}; color: white; width: clamp(28px, 5.5vw, 36px); height: clamp(28px, 5.5vw, 36px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 2.5vw, 16px);">🔗</span>
       روابط سريعة
@@ -308,6 +446,21 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
         <span style="font-size: clamp(14px, 3.5vw, 18px);">📺</span>
         البث المباشر
       </a>
+      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #8e44ad; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
+        <span style="font-size: clamp(14px, 3.5vw, 18px);">📊</span>
+        الإحصائيات
+      </a>
+    </div>
+  </div>
+  
+  <div class="footer-section" style="text-align: center; margin-top: 3%; padding: 2%; background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); color: white; border-radius: 12px;">
+    <p style="margin: 0; font-size: clamp(12px, 2.5vw, 14px); opacity: 0.9;">
+      📱 تابعونا للحصول على آخر أخبار كرة القدم ونتائج المباريات لحظة بلحظة
+    </p>
+    <div style="margin-top: 1%; display: flex; justify-content: center; gap: 3%; flex-wrap: wrap;">
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">⚽ كرة القدم</span>
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📺 بث مباشر</span>
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📊 إحصائيات</span>
     </div>
   </div>
   
@@ -317,6 +470,18 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
 .match-report a:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
+}
+
+.match-report .info-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  transition: all 0.3s ease;
+}
+
+.match-report .events-timeline > div:hover {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
+  transform: translateX(5px);
+  transition: all 0.3s ease;
 }
 
 @media (max-width: 768px) {
@@ -343,9 +508,22 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
     margin: 1% !important;
     padding: 3% !important;
   }
+  
+  .links-section div {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .links-section div {
+    grid-template-columns: 1fr !important;
+  }
 }
 </style>
-`;
+
+<!-- Template Version: SPORTLIVE_RICH_V4_2025 -->
+<!-- Generated with KooraLiveTV Rich Data Scraper -->
+<!-- Responsive Design with Real Match Data -->`;
 
   return {
     title: reportTitle,
@@ -548,233 +726,4 @@ async function updateMatchPosts() {
   }
 }
 
-updateMatchPosts(); 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">⚽</span>
-      أحداث المباراة المهمة
-    </h3>
-    <div class="events-timeline">
-      ${events.slice(0, 15).map(event => `
-        <div style="display: flex; align-items: center; gap: 3%; padding: 2%; margin-bottom: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid ${headerColor};">
-          <div style="background: ${headerColor}; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">${event.minute}'</div>
-          <span style="font-size: 20px;">${event.icon}</span>
-          <div style="flex: 1;">
-            <p style="margin: 0; color: #2c3e50; font-size: clamp(13px, 2.8vw, 15px); font-weight: bold;">${event.player}</p>
-            <p style="margin: 0; color: #7f8c8d; font-size: clamp(11px, 2.5vw, 13px);">${event.type}</p>
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
-
-  ${homeLineup.length > 0 || awayLineup.length > 0 ? `
-  <div class="lineups-section" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">👥</span>
-      تشكيلة الفريقين
-    </h3>
-    
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3%; margin-top: 2%;">
-      ${homeLineup.length > 0 ? `
-      <div style="padding: 3%; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 10px; border-left: 4px solid #4caf50;">
-        <h4 style="margin: 0 0 2% 0; color: #2e7d32; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${homeTeam}</h4>
-        ${homeLineup.slice(0, 11).map(player => `
-          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(46, 125, 50, 0.1);">
-            <div style="background: #4caf50; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
-            <div style="flex: 1;">
-              <p style="margin: 0; color: #2e7d32; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
-              <p style="margin: 0; color: #66bb6a; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      ` : ''}
-      
-      ${awayLineup.length > 0 ? `
-      <div style="padding: 3%; background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-radius: 10px; border-left: 4px solid #f44336;">
-        <h4 style="margin: 0 0 2% 0; color: #c62828; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${awayTeam}</h4>
-        ${awayLineup.slice(0, 11).map(player => `
-          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(198, 40, 40, 0.1);">
-            <div style="background: #f44336; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
-            <div style="flex: 1;">
-              <p style="margin: 0; color: #c62828; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
-              <p style="margin: 0; color: #ef5350; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      ` : ''}
-    </div>
-  </div>
-  ` : ''}
-  
-  <div class="match-info" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">📋</span>
-      معلومات المباراة
-    </h3>
-    
-    <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2%;">
-      
-      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">🏆</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">البطولة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${league || 'غير محدد'}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">📅</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">التاريخ</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${publishedDateFormatted}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">🎯</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">النتيجة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${finalScore}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">📊</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">أحداث المباراة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${events.length} حدث</p>
-      </div>
-      
-    </div>
-  </div>
-  
-  <div class="summary-section" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); padding: 3%; border-radius: 12px; margin-bottom: 3%; border: 1px solid #e9ecef;">
-    <h3 style="color: ${headerColor}; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">🎯</span>
-      ملخص المباراة
-    </h3>
-    
-    <div style="color: #2c3e50; line-height: 1.8; font-size: clamp(14px, 3vw, 16px);">
-      <p style="margin: 0 0 2% 0;">
-        <strong style="color: ${headerColor};">انتهت المباراة</strong> بين فريق <strong>${homeTeam}</strong> وفريق <strong>${awayTeam}</strong> 
-        في إطار منافسات <strong>${league || 'البطولة'}</strong>
-        ${found ? ` بنتيجة <strong style="color: ${headerColor};">${finalScore}</strong>` : ''}.
-      </p>
-      
-      ${found && events.length > 0 ? `
-        <div style="padding: 2%; background: ${homeScore > awayScore ? '#e8f5e8' : awayScore > homeScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; border-left: 4px solid ${homeScore > awayScore ? '#4caf50' : awayScore > homeScore ? '#f44336' : '#ff9800'}; margin: 2% 0;">
-          <p style="margin: 0; color: ${homeScore > awayScore ? '#2e7d32' : awayScore > homeScore ? '#c62828' : '#f57c00'}; font-weight: bold;">
-            ${homeScore > awayScore ? `🏆 فوز ${homeTeam} بنتيجة ${homeScore}-${awayScore}` : 
-              awayScore > homeScore ? `🏆 فوز ${awayTeam} بنتيجة ${awayScore}-${homeScore}` : 
-              `🤝 تعادل الفريقين بنتيجة ${homeScore}-${awayScore}`}
-          </p>
-          <p style="margin: 1% 0 0 0; color: #666; font-size: clamp(12px, 2.5vw, 14px);">
-            شهدت المباراة ${events.length} حدث مهم مع عروض مثيرة من الفريقين.
-          </p>
-        </div>
-      ` : `
-        <div style="padding: 2%; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; margin: 2% 0;">
-          <p style="margin: 0; color: #856404; font-weight: bold;">
-            📊 للحصول على المزيد من التفاصيل والإحصائيات، يرجى متابعة القنوات الرياضية المختصة.
-          </p>
-        </div>
-      `}
-    </div>
-  </div>
-  
-<div class="links-section" style="background: white; padding: 3%; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(16px, 3.5vw, 20px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(28px, 5.5vw, 36px); height: clamp(28px, 5.5vw, 36px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 2.5vw, 16px);">🔗</span>
-      روابط سريعة
-    </h3>
-    
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 2%;">
-      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: ${headerColor}; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
-        <span style="font-size: clamp(14px, 3.5vw, 18px);">🏠</span>
-        الصفحة الرئيسية
-      </a>
-      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #34495e; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
-        <span style="font-size: clamp(14px, 3.5vw, 18px);">⚽</span>
-        مباريات أخرى
-      </a>
-      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #e74c3c; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
-        <span style="font-size: clamp(14px, 3.5vw, 18px);">📺</span>
-        البث المباشر
-      </a>
-      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #8e44ad; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
-        <span style="font-size: clamp(14px, 3.5vw, 18px);">📊</span>
-        الإحصائيات
-      </a>
-    </div>
-  </div>
-  
-  <div class="footer-section" style="text-align: center; margin-top: 3%; padding: 2%; background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); color: white; border-radius: 12px;">
-    <p style="margin: 0; font-size: clamp(12px, 2.5vw, 14px); opacity: 0.9;">
-      📱 تابعونا للحصول على آخر أخبار كرة القدم ونتائج المباريات لحظة بلحظة
-    </p>
-    <div style="margin-top: 1%; display: flex; justify-content: center; gap: 3%; flex-wrap: wrap;">
-      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">⚽ كرة القدم</span>
-      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📺 بث مباشر</span>
-      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📊 إحصائيات</span>
-    </div>
-  </div>
-  
-</div>
-
-<style>
-.match-report a:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
-}
-
-.match-report .info-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-  transition: all 0.3s ease;
-}
-
-.match-report .events-timeline > div:hover {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
-  transform: translateX(5px);
-  transition: all 0.3s ease;
-}
-
-@media (max-width: 768px) {
-  .info-grid {
-    grid-template-columns: 1fr !important;
-  }
-  
-  .lineups-section > div {
-    grid-template-columns: 1fr !important;
-  }
-  
-  .links-section div {
-    grid-template-columns: 1fr !important;
-  }
-  
-  .score-section > div {
-    flex-direction: column !important;
-    gap: 4% !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .match-report {
-    margin: 1% !important;
-    padding: 3% !important;
-  }
-  
-  .links-section div {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-}
-
-@media (max-width: 320px) {
-  .links-section div {
-    grid-template-columns: 1fr !important;
-  }
-}
-</style>
+updateMatchPosts();

@@ -3,7 +3,6 @@ const fs = require('fs').promises;
 
 const BLOG_ID = process.env.BLOG_ID;
 const API_KEY = process.env.API_KEY;
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
 async function loadUrlMappings() {
   const path = './match-urls.json';
@@ -36,13 +35,14 @@ function getDateCategory(publishedDate) {
   
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(today.getTime() - 48 * 60 * 60 * 1000);
   const publishedDay = new Date(published.getFullYear(), published.getMonth(), published.getDate());
   
   if (publishedDay.getTime() === today.getTime()) {
     return 'today';
   } else if (publishedDay.getTime() === yesterday.getTime()) {
     return 'yesterday';
-  } else if (publishedDay.getTime() < yesterday.getTime()) {
+  } else if (publishedDay.getTime() <= twoDaysAgo.getTime()) {
     return 'older';
   } else {
     return 'future';
@@ -129,14 +129,13 @@ async function cleanUrlMappings() {
       if (checkResult.exists) {
         console.log(`✅ Post exists - Category: ${checkResult.dateCategory}, Is Report: ${checkResult.isReport}`);
         
-
-        if (checkResult.dateCategory === 'today' || checkResult.dateCategory === 'yesterday') {
+        if (checkResult.dateCategory === 'older') {
+          removedCount++;
+          console.log(`🗑️ Removing mapping (older than 2 days)`);
+        } else {
           cleanedMappings[key] = mapping;
           keptCount++;
           console.log(`📌 Keeping mapping (${checkResult.dateCategory})`);
-        } else {
-          removedCount++;
-          console.log(`🗑️ Removing mapping (older than yesterday)`);
         }
       } else {
         removedCount++;

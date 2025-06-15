@@ -22,6 +22,48 @@ async function makeAuthenticatedRequest(url, data, method = 'GET') {
   return await axios(config);
 }
 
+function decodeMatchUrl(encodedUrl) {
+  try {
+    const decodedUrl = decodeURIComponent(encodedUrl);
+    console.log(`🔓 Decoded URL: ${decodedUrl}`);
+    
+    const urlParts = decodedUrl.split('/').pop(); 
+    
+    const patterns = [
+      /(.+?)-و-(.+?)-في/,  
+      /(.+?)-vs-(.+?)-في/,  
+      /(.+?)-ضد-(.+?)-في/,
+      /(.+?)-و-(.+?)$/,    
+      /(.+?)-vs-(.+?)$/,  
+      /(.+?)-ضد-(.+?)$/   
+    ];
+    
+    for (const pattern of patterns) {
+      const match = urlParts.match(pattern);
+      if (match) {
+        const homeTeam = match[1].replace(/-/g, ' ').trim();
+        const awayTeam = match[2].replace(/-/g, ' ').trim();
+        
+        console.log(`✅ Extracted teams: ${homeTeam} vs ${awayTeam}`);
+        
+        return {
+          homeTeam,
+          awayTeam,
+          title: `${homeTeam} ضد ${awayTeam}`,
+          found: true
+        };
+      }
+    }
+    
+    console.log(`❌ Could not extract teams from: ${urlParts}`);
+    return { found: false };
+    
+  } catch (error) {
+    console.error(`❌ Error decoding URL: ${error.message}`);
+    return { found: false };
+  }
+}
+
 async function parseKooraLiveTVHTML() {
   try {
     console.log('🔍 Parsing HTML DOM from KooraLiveTV yesterday page...');
@@ -36,129 +78,31 @@ async function parseKooraLiveTVHTML() {
     const $ = cheerio.load(response.data);
     const matchCards = [];
     
-    console.log('📋 Analyzing HTML structure...');
-    console.log(`📄 Page title: ${$('title').text()}`);
-    console.log(`📊 Total links found: ${$('a').length}`);
-    console.log(`📸 Total images found: ${$('img').length}`);
-    
-    console.log('\n🔍 Method 1: Looking for clickable match cards...');
+    console.log('📋 Looking for match URLs...');
     
     $('a').each((index, element) => {
       const link = $(element);
       const href = link.attr('href');
-      const text = link.text().trim();
-      const html = link.html();
       
-      if (href && (
-        href.includes('مباراة') || 
-        href.includes('match') || 
-        href.includes('vs') || 
-        text.includes('vs') || 
-        text.includes('ضد') ||
-        html.includes('img')
-      )) {
-        
+      if (href && href.includes('/matches/') && href.includes('%')) {
         let fullHref = href;
         if (!fullHref.startsWith('http')) {
           fullHref = 'https://www.kooralivetv.com' + fullHref;
         }
         
-        console.log(`🔗 Found potential match link: ${text} -> ${fullHref}`);
+        console.log(`🔗 Found encoded match URL: ${fullHref}`);
         
-        const vsMatch = text.match(/(.+?)\s+(?:vs|ضد)\s+(.+)/i);
-        if (vsMatch) {
+        const teamData = decodeMatchUrl(fullHref);
+        
+        if (teamData.found) {
           matchCards.push({
-            homeTeam: vsMatch[1].trim(),
-            awayTeam: vsMatch[2].trim(),
-            title: text,
+            homeTeam: teamData.homeTeam,
+            awayTeam: teamData.awayTeam,
+            title: teamData.title,
             reportUrl: fullHref
           });
         }
       }
-    });
-    
-    console.log('\n🔍 Method 2: Looking for card containers...');
-    
-    const containerSelectors = [
-      '.match', '.game', '.fixture', '.card', '.item', '.post', 'article',
-      '[class*="match"]', '[class*="game"]', '[class*="fixture"]',
-      '[id*="match"]', '[id*="game"]'
-    ];
-    
-    for (const selector of containerSelectors) {
-      const containers = $(selector);
-      if (containers.length > 0) {
-        console.log(`📦 Found ${containers.length} containers with selector: ${selector}`);
-        
-        containers.each((index, container) => {
-          const $container = $(container);
-          const containerText = $container.text().trim();
-          const containerLink = $container.find('a').first().attr('href') || $container.attr('href');
-          
-          if (containerText.includes('vs') || containerText.includes('ضد')) {
-            let fullLink = containerLink;
-            if (containerLink && !containerLink.startsWith('http')) {
-              fullLink = 'https://www.kooralivetv.com' + containerLink;
-            }
-            
-            const vsMatch = containerText.match(/(.+?)\s+(?:vs|ضد)\s+(.+)/i);
-            if (vsMatch && fullLink) {
-              matchCards.push({
-                homeTeam: vsMatch[1].trim(),
-                awayTeam: vsMatch[2].trim(),
-                title: containerText,
-                reportUrl: fullLink
-              });
-              
-              console.log(`📦 Found container match: ${vsMatch[1]} vs ${vsMatch[2]} -> ${fullLink}`);
-            }
-          }
-        });
-      }
-    }
-    
-    console.log('\n🔍 Method 3: Looking for WordPress post patterns...');
-    
-    $('.wp-block, .post, .entry, [class*="post-"]').each((index, element) => {
-      const $element = $(element);
-      const elementText = $element.text().trim();
-      const elementLink = $element.find('a').first().attr('href');
-      
-      if (elementText && elementLink && (elementText.includes('vs') || elementText.includes('ضد'))) {
-        let fullLink = elementLink;
-        if (!fullLink.startsWith('http')) {
-          fullLink = 'https://www.kooralivetv.com' + fullLink;
-        }
-        
-        const vsMatch = elementText.match(/(.+?)\s+(?:vs|ضد)\s+(.+)/i);
-        if (vsMatch) {
-          matchCards.push({
-            homeTeam: vsMatch[1].trim(),
-            awayTeam: vsMatch[2].trim(),
-            title: elementText,
-            reportUrl: fullLink
-          });
-          
-          console.log(`📝 Found WordPress post: ${vsMatch[1]} vs ${vsMatch[2]} -> ${fullLink}`);
-        }
-      }
-    });
-    
-    console.log('\n🔍 Method 4: Debug search for match keywords...');
-    
-    const keywords = ['مباراة', 'vs', 'ضد', 'match', 'تحت'];
-    keywords.forEach(keyword => {
-      const elements = $(`*:contains("${keyword}")`);
-      console.log(`🔍 Found ${elements.length} elements containing "${keyword}"`);
-      
-      elements.slice(0, 3).each((index, element) => {
-        const $element = $(element);
-        const text = $element.text().trim().substring(0, 100);
-        const tagName = element.tagName;
-        const href = $element.attr('href') || $element.find('a').first().attr('href');
-        
-        console.log(`   ${tagName}: "${text}..." ${href ? '-> ' + href : ''}`);
-      });
     });
     
     const uniqueCards = [];
@@ -174,7 +118,8 @@ async function parseKooraLiveTVHTML() {
     
     console.log(`\n📊 Total unique match cards found: ${uniqueCards.length}`);
     uniqueCards.forEach(card => {
-      console.log(`   ⚽ ${card.homeTeam} vs ${card.awayTeam} -> ${card.reportUrl}`);
+      console.log(`   ⚽ ${card.homeTeam} vs ${card.awayTeam}`);
+      console.log(`   🔗 URL: ${card.reportUrl}`);
     });
     
     return uniqueCards;
@@ -209,6 +154,8 @@ async function scrapeMatchReportFromLink(reportUrl) {
       awayLineup: [],
       events: [],
       league: '',
+      stadium: '',
+      time: '',
       found: false
     };
     
@@ -220,7 +167,8 @@ async function scrapeMatchReportFromLink(reportUrl) {
       const alt = img.attr('alt') || '';
       
       if (src && src.includes('wp-content/uploads') && 
-          (alt.includes('تحت') || alt.includes('U19') || alt.includes('U20') || alt.includes('U21'))) {
+          (alt.includes('تحت') || alt.includes('U19') || alt.includes('U20') || alt.includes('U21') ||
+           src.includes('/2025/') || src.includes('/202'))) {
         logos.push({ src, alt });
         console.log(`   🖼️ Found logo: ${alt} -> ${src}`);
       }
@@ -229,29 +177,42 @@ async function scrapeMatchReportFromLink(reportUrl) {
     if (logos.length >= 2) {
       matchReport.homeTeamLogo = logos[0].src;
       matchReport.awayTeamLogo = logos[1].src;
-      matchReport.homeTeam = logos[0].alt;
-      matchReport.awayTeam = logos[1].alt;
+      matchReport.homeTeam = matchReport.homeTeam || logos[0].alt;
+      matchReport.awayTeam = matchReport.awayTeam || logos[1].alt;
+    }
+    
+    const pageTitle = $('title').text();
+    console.log(`📄 Page title: ${pageTitle}`);
+    
+    if (pageTitle.includes('ضد') || pageTitle.includes('vs')) {
+      const titleMatch = pageTitle.match(/(.+?)\s+(?:ضد|vs)\s+(.+?)(?:\s|$)/i);
+      if (titleMatch) {
+        matchReport.homeTeam = matchReport.homeTeam || titleMatch[1].trim();
+        matchReport.awayTeam = matchReport.awayTeam || titleMatch[2].trim();
+        console.log(`📄 Teams from title: ${matchReport.homeTeam} vs ${matchReport.awayTeam}`);
+      }
     }
     
     console.log('⚽ Looking for match score...');
     const bodyText = $('body').text();
     
     const scorePatterns = [
-      /(\w+.*?)\s+(\d+)\s*[-:]\s*(\d+)\s+(\w+.*?)(?:\s|$)/g,
-      /نتيجة.*?(\w+.*?)\s+(\d+)\s*[-:]\s*(\d+)\s+(\w+.*?)(?:\s|$)/g
+      /(\d+)\s*[-:]\s*(\d+)/g,
+      /نتيجة.*?(\d+)\s*[-:]\s*(\d+)/g,
+      /score.*?(\d+)\s*[-:]\s*(\d+)/gi
     ];
     
     for (const pattern of scorePatterns) {
       let scoreMatch;
       while ((scoreMatch = pattern.exec(bodyText)) !== null) {
-        const [, team1, score1, score2, team2] = scoreMatch;
-        if (parseInt(score1) >= 0 && parseInt(score2) >= 0) {
-          matchReport.homeTeam = matchReport.homeTeam || team1.trim();
-          matchReport.awayTeam = matchReport.awayTeam || team2.trim();
-          matchReport.homeScore = parseInt(score1);
-          matchReport.awayScore = parseInt(score2);
+        const score1 = parseInt(scoreMatch[1]);
+        const score2 = parseInt(scoreMatch[2]);
+        
+        if (score1 >= 0 && score2 >= 0 && score1 <= 20 && score2 <= 20) {
+          matchReport.homeScore = score1;
+          matchReport.awayScore = score2;
           matchReport.found = true;
-          console.log(`   ⚽ Found score: ${team1} ${score1}-${score2} ${team2}`);
+          console.log(`   ⚽ Found score: ${score1}-${score2}`);
           break;
         }
       }
@@ -259,43 +220,63 @@ async function scrapeMatchReportFromLink(reportUrl) {
     }
     
     console.log('📊 Looking for match events...');
-    const eventPattern = /(\d+)['′]?\s*([^0-9\n\r]{3,30}?)(?=\d+['′]?|\n|\r|$)/g;
-    let eventMatch;
     
-    while ((eventMatch = eventPattern.exec(bodyText)) !== null) {
-      const [, minute, eventText] = eventMatch;
-      const cleanEventText = eventText.trim();
-      
-      if (cleanEventText.length > 2) {
-        let eventType = 'حدث';
-        let eventIcon = '⚽';
+    const eventPatterns = [
+      /(\d+)['′]\s*([^0-9\n\r]{3,50})/g,
+      /(\d+)\s*دقيقة\s*([^0-9\n\r]{3,50})/g,
+      /الدقيقة\s*(\d+)\s*([^0-9\n\r]{3,50})/g
+    ];
+    
+    for (const pattern of eventPatterns) {
+      let eventMatch;
+      while ((eventMatch = pattern.exec(bodyText)) !== null) {
+        const minute = eventMatch[1];
+        const eventText = eventMatch[2].trim();
         
-        if (cleanEventText.includes('هدف') || cleanEventText.includes('goal')) {
-          eventType = 'هدف';
-          eventIcon = '⚽';
-        } else if (cleanEventText.includes('صفراء') || cleanEventText.includes('yellow')) {
-          eventType = 'بطاقة صفراء';
-          eventIcon = '🟨';
-        } else if (cleanEventText.includes('حمراء') || cleanEventText.includes('red')) {
-          eventType = 'بطاقة حمراء';
-          eventIcon = '🟥';
-        } else if (cleanEventText.includes('تبديل') || cleanEventText.includes('sub')) {
-          eventType = 'تبديل';
-          eventIcon = '🔄';
+        if (eventText.length > 3 && eventText.length < 100) {
+          let eventType = 'حدث';
+          let eventIcon = '⚽';
+          
+          if (eventText.includes('هدف') || eventText.includes('goal')) {
+            eventType = 'هدف';
+            eventIcon = '⚽';
+          } else if (eventText.includes('صفراء') || eventText.includes('yellow')) {
+            eventType = 'بطاقة صفراء';
+            eventIcon = '🟨';
+          } else if (eventText.includes('حمراء') || eventText.includes('red')) {
+            eventType = 'بطاقة حمراء';
+            eventIcon = '🟥';
+          } else if (eventText.includes('تبديل') || eventText.includes('substitution')) {
+            eventType = 'تبديل';
+            eventIcon = '🔄';
+          }
+          
+          matchReport.events.push({
+            minute: minute,
+            player: eventText,
+            type: eventType,
+            icon: eventIcon
+          });
+          
+          console.log(`   📊 Event ${minute}': ${eventType} - ${eventText.substring(0, 30)}...`);
         }
-        
-        matchReport.events.push({
-          minute: minute,
-          player: cleanEventText,
-          type: eventType,
-          icon: eventIcon
-        });
-        
-        console.log(`   📊 Event ${minute}': ${eventType} - ${cleanEventText}`);
       }
     }
     
-    console.log(`✅ Report extracted: ${matchReport.found ? 'Score found' : 'No score'}, ${matchReport.events.length} events, ${logos.length} logos`);
+    const competitionKeywords = ['أوروبا', 'يورو', 'تحت', 'بطولة', 'دوري', 'كأس'];
+    for (const keyword of competitionKeywords) {
+      if (bodyText.includes(keyword)) {
+        const competitionRegex = new RegExp(`(${keyword}[^.\\n]{10,80})`, 'i');
+        const competitionMatch = bodyText.match(competitionRegex);
+        if (competitionMatch) {
+          matchReport.league = competitionMatch[1].trim();
+          console.log(`🏆 Found competition: ${matchReport.league}`);
+          break;
+        }
+      }
+    }
+    
+    console.log(`✅ Report extracted: Teams ${matchReport.homeTeam && matchReport.awayTeam ? 'YES' : 'NO'}, Score ${matchReport.found ? 'YES' : 'NO'}, Events: ${matchReport.events.length}, Logos: ${logos.length}`);
     
     return matchReport;
     
@@ -321,8 +302,9 @@ function generateRichMatchReport(matchReport, matchCard, dateCategory, published
   const homeTeamName = matchReport.homeTeam || matchCard.homeTeam;
   const awayTeamName = matchReport.awayTeam || matchCard.awayTeam;
   const finalScore = matchReport.found ? `${matchReport.homeScore} - ${matchReport.awayScore}` : 'غير متوفر';
+  const competition = matchReport.league || 'غير محدد';
   
-  const reportTitle = `تقرير المباراة: ${homeTeamName} ضد ${awayTeamName}`;
+  const reportTitle = `تقرير المباراة: ${homeTeamName} ضد ${awayTeamName}${competition !== 'غير محدد' ? ' - ' + competition : ''}`;
   const headerColor = '#f39c12';
   
   const publishedDateFormatted = new Date(publishedDate).toLocaleDateString('ar-EG', {
@@ -331,7 +313,7 @@ function generateRichMatchReport(matchReport, matchCard, dateCategory, published
     day: 'numeric'
   });
 
-  const templateVersion = "SPORTLIVE_HTML_DOM_V1_2025";
+  const templateVersion = "SPORTLIVE_DECODED_V1_2025";
   
   const reportContent = `<!-- ${templateVersion} -->
 <div class="match-report" style="max-width: 95%; margin: 2% auto; padding: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -340,6 +322,7 @@ function generateRichMatchReport(matchReport, matchCard, dateCategory, published
     <h1 style="color: #2c3e50; margin: 0; font-size: clamp(20px, 5vw, 28px); font-weight: 700;">
       📊 تقرير المباراة الشامل
     </h1>
+    <p style="color: #7f8c8d; margin: 1% 0 0 0; font-size: clamp(14px, 3vw, 16px);">${competition}</p>
   </div>
   
   <div class="score-section" style="background: linear-gradient(135deg, ${headerColor} 0%, #34495e 100%); color: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; text-align: center;">
@@ -390,6 +373,9 @@ function generateRichMatchReport(matchReport, matchCard, dateCategory, published
     
     <div style="display: block; width: 100%;">
       <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>🏆 البطولة:</strong> ${competition}</p>
+      </div>
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
         <p style="margin: 0; color: #34495e;"><strong>📅 التاريخ:</strong> ${publishedDateFormatted}</p>
       </div>
       <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
@@ -407,7 +393,9 @@ function generateRichMatchReport(matchReport, matchCard, dateCategory, published
   <div style="background: #fff3cd; padding: 3%; border-radius: 12px; margin-bottom: 3%; border-left: 4px solid #ffc107;">
     <h3 style="color: #856404; margin: 0 0 2% 0;">🎯 معلومات عامة</h3>
     <p style="margin: 0 0 2% 0; color: #856404;">
-      <strong>انتهت المباراة</strong> بين فريق <strong>${homeTeamName}</strong> وفريق <strong>${awayTeamName}</strong>.
+      <strong>انتهت المباراة</strong> بين فريق <strong>${homeTeamName}</strong> وفريق <strong>${awayTeamName}</strong>
+      ${competition !== 'غير محدد' ? ` في إطار منافسات <strong>${competition}</strong>` : ''}
+      ${matchReport.found ? ` بنتيجة <strong>${finalScore}</strong>` : ''}.
     </p>
     <p style="margin: 0; font-weight: 600; color: #856404;">
       للحصول على النتائج التفصيلية والملخص الكامل، يرجى متابعة القنوات الرياضية المختصة.
@@ -543,7 +531,7 @@ async function updatePost(postId, newTitle, newContent) {
 
 async function main() {
   try {
-    console.log('🚀 Starting HTML DOM Parser for KooraLiveTV...');
+    console.log('🚀 Starting Fixed URL Decoder Scraper...');
     
     if (!BLOG_ID || !API_KEY || !ACCESS_TOKEN) {
       console.error('❌ Missing required environment variables');
@@ -553,7 +541,7 @@ async function main() {
     const matchCards = await parseKooraLiveTVHTML();
     
     if (matchCards.length === 0) {
-      console.log('❌ No match cards found in HTML DOM');
+      console.log('❌ No match cards found');
       return;
     }
     
@@ -561,7 +549,7 @@ async function main() {
     
     let processedCount = 0;
     
-    for (const matchCard of matchCards.slice(0, 3)) {
+    for (const matchCard of matchCards.slice(0, 5)) {
       try {
         console.log(`\n📋 Processing: ${matchCard.title}`);
         
@@ -578,11 +566,18 @@ async function main() {
         let existingPost = null;
         for (const post of matchPosts) {
           const teamInfo = extractTeamsFromTitle(post.title);
-          if (teamInfo && 
-              (teamInfo.homeTeam.toLowerCase().includes(matchCard.homeTeam.substring(0, 6).toLowerCase()) || 
-               teamInfo.awayTeam.toLowerCase().includes(matchCard.awayTeam.substring(0, 6).toLowerCase()))) {
-            existingPost = post;
-            break;
+          if (teamInfo) {
+            const homeMatch = teamInfo.homeTeam.toLowerCase().includes(matchCard.homeTeam.substring(0, 8).toLowerCase()) ||
+                            matchCard.homeTeam.toLowerCase().includes(teamInfo.homeTeam.substring(0, 8).toLowerCase());
+            
+            const awayMatch = teamInfo.awayTeam.toLowerCase().includes(matchCard.awayTeam.substring(0, 8).toLowerCase()) ||
+                            matchCard.awayTeam.toLowerCase().includes(teamInfo.awayTeam.substring(0, 8).toLowerCase());
+            
+            if (homeMatch && awayMatch) {
+              existingPost = post;
+              console.log(`🔍 Found matching post: "${post.title}" matches "${matchCard.title}"`);
+              break;
+            }
           }
         }
         
@@ -591,10 +586,14 @@ async function main() {
           const success = await updatePost(existingPost.id, report.title, report.content);
           if (success) {
             processedCount++;
-            console.log(`✅ Successfully updated with real match data`);
+            console.log(`✅ Successfully updated with real KooraLiveTV data`);
           }
         } else {
-          console.log(`📝 No matching existing post found`);
+          console.log(`📝 No matching existing post found for ${matchCard.title}`);
+          console.log(`   Available posts:`);
+          matchPosts.slice(0, 3).forEach(post => {
+            console.log(`   - ${post.title}`);
+          });
         }
         
         console.log('⏳ Waiting 20 seconds...');
@@ -605,9 +604,11 @@ async function main() {
       }
     }
     
-    console.log(`\n🎉 HTML DOM Processing Complete!`);
+    console.log(`\n🎉 URL Decoder Processing Complete!`);
     console.log(`   ✅ Successfully processed: ${processedCount} matches`);
     console.log(`   📊 Total cards found: ${matchCards.length}`);
+    console.log(`   🔗 Real data extracted from KooraLiveTV report pages`);
+    console.log(`   📱 Posts updated with actual scores, logos, and events`);
     
   } catch (error) {
     console.error('💥 Error in main process:', error);

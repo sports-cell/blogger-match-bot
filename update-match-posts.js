@@ -441,6 +441,9 @@ async function updateMatchPosts() {
       const dateCategory = getDateCategory(post.published);
       console.log(`📂 Date category: ${dateCategory}`);
       
+      let shouldUpdate = false;
+      let reason = '';
+      
       if (post.title.includes('تقرير المباراة') || post.content.includes('match-report')) {
         if (!post.content.includes('SPORTLIVE_V2_2025')) {
           console.log('🔄 Post is old report template - updating to new design...');

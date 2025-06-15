@@ -1,6 +1,5 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const fs = require('fs').promises;
 
 const BLOG_ID = process.env.BLOG_ID;
 const API_KEY = process.env.API_KEY;
@@ -23,65 +22,10 @@ async function makeAuthenticatedRequest(url, data, method = 'GET') {
   return await axios(config);
 }
 
-function isMatchCurrentOrFuture(timeString) {
-  if (!timeString || timeString === 'TBD' || timeString === 'انتهت') {
-    return false;
-  }
-  
+async function fetchMatchesYesterday() {
   try {
-    const now = new Date();
-    const currentTime = now.getHours() * 60 + now.getMinutes();
-    
-    const timeParts = timeString.match(/(\d{1,2}):(\d{2})/);
-    if (!timeParts) return false;
-    
-    let matchHour = parseInt(timeParts[1]);
-    let matchMinute = parseInt(timeParts[2]);
-    
-    if (timeString.toLowerCase().includes('pm') && matchHour !== 12) {
-      matchHour += 12;
-    } else if (timeString.toLowerCase().includes('am') && matchHour === 12) {
-      matchHour = 0;
-    }
-    
-    const matchTime = matchHour * 60 + matchMinute;
-    
-    return matchTime >= (currentTime - 30);
-  } catch (error) {
-    console.error('Error parsing match time:', error);
-    return false;
-  }
-}
-
-function filterTodayMatches(matches) {
-  return matches.filter(match => {
-    if (match.date !== 'today') {
-      console.log(`🔄 Filtering out non-today match: ${match.homeTeam} vs ${match.awayTeam} (${match.date})`);
-      return false;
-    }
-    
-    if (!isMatchCurrentOrFuture(match.time)) {
-      console.log(`⏰ Filtering out past match: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
-      return false;
-    }
-    
-    console.log(`✅ Including current/future match: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
-    return true;
-  });
-}
-
-async function fetchMatches(day = 'today') {
-  try {
-    let url;
-    if (day === 'yesterday') {
-      url = 'https://www.kooraliive.com/matches-yesterday/';
-    } else if (day === 'today') {
-      url = 'https://www.kooraliive.com/matches-today/';
-    } else {
-      url = 'https://www.kooraliive.com/matches-tomorrow/';
-    }
-    
-    console.log(`Fetching matches for ${day} from ${url}`);
+    const url = 'https://www.kooralivetv.com/matches-yesterday/';
+    console.log(`Fetching yesterday matches from ${url}`);
     
     const corsProxy = 'https://api.allorigins.win/raw?url=';
     const response = await axios.get(corsProxy + encodeURIComponent(url));
@@ -90,563 +34,566 @@ async function fetchMatches(day = 'today') {
     const $ = cheerio.load(html);
     const matches = [];
     
-    $('.AY_Match').each((index, element) => {
-      try {
-        const homeTeam = $(element).find('.TM1 .TM_Name').text().trim();
-        const awayTeam = $(element).find('.TM2 .TM_Name').text().trim();
-        
-        let homeTeamLogo = $(element).find('.TM1 .TM_Logo img').attr('src');
-        if (homeTeamLogo && homeTeamLogo.includes('data:image/gif;base64')) {
-          homeTeamLogo = $(element).find('.TM1 .TM_Logo img').attr('data-src');
+    $('a').each((index, element) => {
+      const href = $(element).attr('href');
+      
+      if (href && href.includes('/matches/') && href.includes('%')) {
+        let fullHref = href;
+        if (!fullHref.startsWith('http')) {
+          fullHref = 'https://www.kooralivetv.com' + fullHref;
         }
         
-        let awayTeamLogo = $(element).find('.TM2 .TM_Logo img').attr('src');
-        if (awayTeamLogo && awayTeamLogo.includes('data:image/gif;base64')) {
-          awayTeamLogo = $(element).find('.TM2 .TM_Logo img').attr('data-src');
+        console.log(`🔗 Found match URL: ${fullHref}`);
+        
+        const teamData = decodeMatchUrl(fullHref);
+        
+        if (teamData.found) {
+          matches.push({
+            homeTeam: teamData.homeTeam,
+            awayTeam: teamData.awayTeam,
+            title: teamData.title,
+            matchLink: fullHref
+          });
         }
-        
-        const time = $(element).find('.MT_Time').text().trim();
-        const league = $(element).find('.MT_Info li:last-child span').text().trim();
-        const broadcaster = $(element).find('.MT_Info li:first-child span').text().trim();
-        
-        const matchLinkElement = $(element).find('a');
-        let matchLink = null;
-        
-        if (matchLinkElement.length > 0) {
-          let href = matchLinkElement.attr('href');
-          if (href) {
-            if (href.startsWith('http')) {
-              matchLink = href;
-            } else if (href.startsWith('/')) {
-              matchLink = `https://www.kooraliive.com${href}`;
-            } else {
-              matchLink = `https://www.kooraliive.com/${href}`;
-            }
-            console.log(`Found match link: ${matchLink}`);
-          }
-        }
-        
-        if (!homeTeam || !awayTeam) {
-          console.log(`Skipping match #${index} - missing team data`);
-          return;
-        }
-        
-        const match = {
-          id: `${day}-${index}`,
-          homeTeam,
-          awayTeam,
-          homeTeamLogo: homeTeamLogo || '',
-          awayTeamLogo: awayTeamLogo || '',
-          time: time || 'TBD',
-          league: league || 'Football Match',
-          broadcaster: broadcaster || 'TBD',
-          date: day,
-          matchLink: matchLink
-        };
-        
-        matches.push(match);
-      } catch (error) {
-        console.error(`Error parsing match ${index}:`, error);
       }
     });
     
-    console.log(`Found ${matches.length} matches for ${day}`);
-    return matches;
+    const uniqueMatches = [];
+    const seen = new Set();
+    
+    matches.forEach(match => {
+      const key = `${match.homeTeam}-${match.awayTeam}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueMatches.push(match);
+      }
+    });
+    
+    console.log(`Found ${uniqueMatches.length} yesterday matches`);
+    return uniqueMatches;
   } catch (error) {
-    console.error('Error fetching matches:', error);
+    console.error('Error fetching yesterday matches:', error);
     return [];
   }
 }
 
-async function extractIframeFromMatch(matchUrl) {
+function decodeMatchUrl(encodedUrl) {
+  try {
+    const decodedUrl = decodeURIComponent(encodedUrl);
+    console.log(`🔓 Decoded URL: ${decodedUrl}`);
+    
+    const urlParts = decodedUrl.split('/matches/')[1]?.replace(/\/$/, '') || '';
+    console.log(`🎯 URL parts to analyze: "${urlParts}"`);
+    
+    if (!urlParts || urlParts.length === 0) {
+      console.log(`❌ URL parts is empty`);
+      return { found: false };
+    }
+    
+    if (urlParts.includes('-و-')) {
+      const parts = urlParts.split('-و-');
+      
+      if (parts.length >= 2) {
+        let homeTeam = parts[0].replace(/-/g, ' ').trim();
+        
+        let awayTeamPart = parts[1];
+        const fiIndex = awayTeamPart.indexOf('-في-');
+        if (fiIndex !== -1) {
+          awayTeamPart = awayTeamPart.substring(0, fiIndex);
+        }
+        
+        let awayTeam = awayTeamPart.replace(/-/g, ' ').trim();
+        
+        homeTeam = homeTeam.replace(/\s*تحت\s*\d+\s*/g, '').trim();
+        awayTeam = awayTeam.replace(/\s*تحت\s*\d+\s*/g, '').trim();
+        
+        console.log(`✅ Final teams: "${homeTeam}" vs "${awayTeam}"`);
+        
+        if (homeTeam && awayTeam) {
+          return {
+            homeTeam,
+            awayTeam,
+            title: `${homeTeam} ضد ${awayTeam}`,
+            found: true
+          };
+        }
+      }
+    }
+    
+    console.log(`❌ Could not extract teams from: "${urlParts}"`);
+    return { found: false };
+    
+  } catch (error) {
+    console.error(`❌ Error decoding URL: ${error.message}`);
+    return { found: false };
+  }
+}
+
+async function extractMatchReportFromMatch(matchUrl) {
   try {
     if (!matchUrl) {
       console.log('No match URL provided');
       return null;
     }
     
-    console.log(`Extracting iframe from: ${matchUrl}`);
+    console.log(`📖 Extracting match report from: ${matchUrl}`);
     
     const corsProxy = 'https://api.allorigins.win/raw?url=';
     const response = await axios.get(corsProxy + encodeURIComponent(matchUrl), {
       timeout: 20000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
     
     const $ = cheerio.load(response.data);
     
-    let iframe = null;
+    const matchReport = {
+      homeTeam: '',
+      awayTeam: '',
+      homeScore: 0,
+      awayScore: 0,
+      homeTeamLogo: '',
+      awayTeamLogo: '',
+      homeLineup: [],
+      awayLineup: [],
+      events: [],
+      league: '',
+      stadium: '',
+      time: '',
+      found: false
+    };
     
-    const allIframes = $('iframe');
-    console.log(`📊 Total iframes found: ${allIframes.length}`);
-    
-    allIframes.each((index, element) => {
-      const src = $(element).attr('src');
-      console.log(`  ${index + 1}. ${src}`);
+    console.log('🏠 Looking for team logos...');
+    const logos = [];
+    $('img').each((index, element) => {
+      const img = $(element);
+      const src = img.attr('src') || img.attr('data-src');
+      const alt = img.attr('alt') || '';
+      
+      if (src && src.includes('wp-content/uploads') && 
+          (alt.includes('تحت') || alt.includes('U19') || alt.includes('U20') || alt.includes('U21') ||
+           src.includes('/2025/') || src.includes('/202'))) {
+        logos.push({ src, alt });
+        console.log(`   🖼️ Found logo: ${alt} -> ${src}`);
+      }
     });
     
-    const iframeSelectors = [
-      '.entry-content iframe',
-      '.entry iframe', 
-      '#the-post iframe',
-      'article iframe',
-      '.post-content iframe',
-      'p iframe',
-      'div iframe',
-      'iframe'
-    ];
-    
-    for (const selector of iframeSelectors) {
-      const foundIframes = $(selector);
-      console.log(`🔍 Selector "${selector}" found ${foundIframes.length} iframe(s)`);
-      
-      foundIframes.each((index, element) => {
-        const src = $(element).attr('src');
-        
-        if (src && 
-            !src.includes('aqle3.com') && 
-            !src.includes('bvtpk.com') &&
-            !src.includes('googletagmanager') &&
-            !src.includes('gtag.js') &&
-            src.length > 10) {
-          
-          iframe = {
-            src: src.startsWith('//') ? `https:${src}` : src,
-            width: $(element).attr('width') || '100%',
-            height: $(element).attr('height') || '500px',
-            allowfullscreen: $(element).attr('allowfullscreen') || 'true',
-            frameborder: $(element).attr('frameborder') || '0',
-            scrolling: $(element).attr('scrolling') || '1'
-          };
-          
-          console.log(`✅ Selected iframe: ${iframe.src}`);
-          console.log(`   - Selector used: ${selector}`);
-          console.log(`   - Dimensions: ${iframe.width} x ${iframe.height}`);
-          return false;
-        }
-      });
-      
-      if (iframe) break;
+    if (logos.length >= 2) {
+      matchReport.homeTeamLogo = logos[0].src;
+      matchReport.awayTeamLogo = logos[1].src;
+      matchReport.homeTeam = matchReport.homeTeam || logos[0].alt;
+      matchReport.awayTeam = matchReport.awayTeam || logos[1].alt;
     }
     
-    if (!iframe && allIframes.length > 0) {
-      console.log('🔄 Taking first non-ad iframe...');
-      
-      allIframes.each((index, element) => {
-        const src = $(element).attr('src');
-        
-        if (src && 
-            !src.includes('aqle3.com') && 
-            !src.includes('bvtpk.com') &&
-            !src.includes('googletagmanager') &&
-            !src.includes('gtag.js') &&
-            src.length > 10) {
-          
-          iframe = {
-            src: src.startsWith('//') ? `https:${src}` : src,
-            width: $(element).attr('width') || '100%',
-            height: $(element).attr('height') || '500px',
-            allowfullscreen: $(element).attr('allowfullscreen') || 'true',
-            frameborder: $(element).attr('frameborder') || '0',
-            scrolling: $(element).attr('scrolling') || '1'
-          };
-          
-          console.log(`🔄 Using first valid iframe: ${iframe.src}`);
-          return false;
-        }
-      });
-    }
+    const pageTitle = $('title').text();
+    console.log(`📄 Page title: ${pageTitle}`);
     
-    if (!iframe) {
-      console.log(`❌ No suitable iframe found in ${allIframes.length} total iframes`);
-      
-      if (allIframes.length > 0) {
-        console.log('📋 All iframe sources found:');
-        allIframes.each((index, element) => {
-          const src = $(element).attr('src');
-          const fullHtml = $(element).toString();
-          console.log(`  ${index + 1}. Source: ${src}`);
-          console.log(`     HTML: ${fullHtml.substring(0, 150)}...`);
-        });
+    if (pageTitle.includes('ضد') || pageTitle.includes('vs')) {
+      const titleMatch = pageTitle.match(/(.+?)\s+(?:ضد|vs)\s+(.+?)(?:\s|$)/i);
+      if (titleMatch) {
+        matchReport.homeTeam = matchReport.homeTeam || titleMatch[1].trim();
+        matchReport.awayTeam = matchReport.awayTeam || titleMatch[2].trim();
+        console.log(`📄 Teams from title: ${matchReport.homeTeam} vs ${matchReport.awayTeam}`);
       }
     }
     
-    return iframe;
+    console.log('⚽ Looking for match score...');
+    const bodyText = $('body').text();
+    
+    const scorePatterns = [
+      /(\d+)\s*[-:]\s*(\d+)/g,
+      /نتيجة.*?(\d+)\s*[-:]\s*(\d+)/g,
+      /score.*?(\d+)\s*[-:]\s*(\d+)/gi
+    ];
+    
+    for (const pattern of scorePatterns) {
+      let scoreMatch;
+      while ((scoreMatch = pattern.exec(bodyText)) !== null) {
+        const score1 = parseInt(scoreMatch[1]);
+        const score2 = parseInt(scoreMatch[2]);
+        
+        if (score1 >= 0 && score2 >= 0 && score1 <= 20 && score2 <= 20) {
+          matchReport.homeScore = score1;
+          matchReport.awayScore = score2;
+          matchReport.found = true;
+          console.log(`   ⚽ Found score: ${score1}-${score2}`);
+          break;
+        }
+      }
+      if (matchReport.found) break;
+    }
+    
+    console.log('📊 Looking for match events...');
+    
+    const eventPatterns = [
+      /(\d+)['′]\s*([^0-9\n\r]{3,50})/g,
+      /(\d+)\s*دقيقة\s*([^0-9\n\r]{3,50})/g,
+      /الدقيقة\s*(\d+)\s*([^0-9\n\r]{3,50})/g
+    ];
+    
+    for (const pattern of eventPatterns) {
+      let eventMatch;
+      while ((eventMatch = pattern.exec(bodyText)) !== null) {
+        const minute = eventMatch[1];
+        const eventText = eventMatch[2].trim();
+        
+        if (eventText.length > 3 && eventText.length < 100) {
+          let eventType = 'حدث';
+          let eventIcon = '⚽';
+          
+          if (eventText.includes('هدف') || eventText.includes('goal')) {
+            eventType = 'هدف';
+            eventIcon = '⚽';
+          } else if (eventText.includes('صفراء') || eventText.includes('yellow')) {
+            eventType = 'بطاقة صفراء';
+            eventIcon = '🟨';
+          } else if (eventText.includes('حمراء') || eventText.includes('red')) {
+            eventType = 'بطاقة حمراء';
+            eventIcon = '🟥';
+          } else if (eventText.includes('تبديل') || eventText.includes('substitution')) {
+            eventType = 'تبديل';
+            eventIcon = '🔄';
+          }
+          
+          matchReport.events.push({
+            minute: minute,
+            player: eventText,
+            type: eventType,
+            icon: eventIcon
+          });
+          
+          console.log(`   📊 Event ${minute}': ${eventType} - ${eventText.substring(0, 30)}...`);
+        }
+      }
+    }
+    
+    const competitionKeywords = ['أوروبا', 'يورو', 'تحت', 'بطولة', 'دوري', 'كأس'];
+    for (const keyword of competitionKeywords) {
+      if (bodyText.includes(keyword)) {
+        const competitionRegex = new RegExp(`(${keyword}[^.\\n]{10,80})`, 'i');
+        const competitionMatch = bodyText.match(competitionRegex);
+        if (competitionMatch) {
+          matchReport.league = competitionMatch[1].trim();
+          console.log(`🏆 Found competition: ${matchReport.league}`);
+          break;
+        }
+      }
+    }
+    
+    console.log(`✅ Report extracted: Teams ${matchReport.homeTeam && matchReport.awayTeam ? 'YES' : 'NO'}, Score ${matchReport.found ? 'YES' : 'NO'}, Events: ${matchReport.events.length}, Logos: ${logos.length}`);
+    
+    return matchReport;
+    
   } catch (error) {
-    console.error('❌ Error extracting iframe:', error.message);
+    console.error(`❌ Error extracting match report:`, error.message);
     return null;
   }
 }
 
-async function checkPostExists(title) {
-  try {
-    const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(title)}&key=${API_KEY}`;
-    const response = await axios.get(searchUrl);
-    
-    if (response.data.items && response.data.items.length > 0) {
-      console.log(`Post with similar title already exists: ${title}`);
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('Error checking if post exists:', error);
-    return false;
-  }
-}
-
-function createMatchKey(homeTeam, awayTeam, date) {
-  const combined = `${homeTeam}_vs_${awayTeam}_${date}`;
-  return Buffer.from(combined, 'utf8').toString('base64')
-    .replace(/[^A-Za-z0-9]/g, '') 
-    .substring(0, 32);
-}
-
-async function storeUrlMapping(match, actualUrl, publishedDate) {
-  const path = './match-urls.json';
-  
-  try {
-    let mappings = {};
-    try {
-      const data = await fs.readFile(path, 'utf8');
-      mappings = JSON.parse(data);
-    } catch (e) {
-      console.log('Creating new URL mappings file');
-    }
-    
-    const matchKey = createMatchKey(match.homeTeam, match.awayTeam, match.date);
-    
-    const readableKey = `${match.homeTeam} vs ${match.awayTeam} (${match.date})`;
-    
-    mappings[matchKey] = {
-      url: actualUrl,
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
-      league: match.league,
-      date: match.date,
-      published: publishedDate,
-      lastUpdated: new Date().toISOString(),
-      readableKey: readableKey 
+function generateRichMatchReport(matchReport, match) {
+  if (!matchReport) {
+    return {
+      title: `تقرير المباراة: ${match.homeTeam} ضد ${match.awayTeam}`,
+      content: `<p>تعذر الحصول على تفاصيل المباراة</p>`
     };
-    
-    await fs.writeFile(path, JSON.stringify(mappings, null, 2));
-    console.log(`📝 URL mapping stored: ${readableKey} -> ${actualUrl}`);
-  } catch (error) {
-    console.error('Error storing URL mapping:', error);
   }
-}
-
-function cleanIframeContent(iframeData) {
-  if (!iframeData) return null;
   
-  return `
-    <div class="albaplayer_server-body">
-      <div class="video-con embed-responsive">
-        <iframe allowfullscreen="${iframeData.allowfullscreen}" 
-                class="cf" 
-                frameborder="${iframeData.frameborder}" 
-                height="${iframeData.height}" 
-                name="search_iframe" 
-                rel="nofollow" 
-                sandbox="allow-forms allow-same-origin allow-scripts" 
-                scrolling="no" 
-                src="${iframeData.src}" 
-                width="${iframeData.width}">
-        </iframe>
+  const homeTeamName = matchReport.homeTeam || match.homeTeam;
+  const awayTeamName = matchReport.awayTeam || match.awayTeam;
+  const finalScore = matchReport.found ? `${matchReport.homeScore} - ${matchReport.awayScore}` : 'غير متوفر';
+  const competition = matchReport.league || 'غير محدد';
+  
+  const reportTitle = `تقرير المباراة: ${homeTeamName} ضد ${awayTeamName}${competition !== 'غير محدد' ? ' - ' + competition : ''}`;
+  const headerColor = '#f39c12';
+  
+  const publishedDateFormatted = new Date().toLocaleDateString('ar-EG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const templateVersion = "SPORTLIVE_REPORT_V1_2025";
+  
+  const reportContent = `<!-- ${templateVersion} -->
+<div class="match-report" style="max-width: 95%; margin: 2% auto; padding: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  
+  <div class="header" style="text-align: center; margin-bottom: 3%; padding-bottom: 2%; border-bottom: 3px solid ${headerColor};">
+    <h1 style="color: #2c3e50; margin: 0; font-size: clamp(20px, 5vw, 28px); font-weight: 700;">
+      📊 تقرير المباراة الشامل
+    </h1>
+    <p style="color: #7f8c8d; margin: 1% 0 0 0; font-size: clamp(14px, 3vw, 16px);">${competition}</p>
+  </div>
+  
+  <div class="score-section" style="background: linear-gradient(135deg, ${headerColor} 0%, #34495e 100%); color: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; text-align: center;">
+    <h2 style="margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 24px);">النتيجة النهائية</h2>
+    <div style="display: flex; justify-content: center; align-items: center; gap: 3%; flex-wrap: wrap;">
+      <div style="text-align: center; flex: 1; min-width: 120px;">
+        <div style="width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 2%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.2);">
+          ${matchReport.homeTeamLogo ? 
+            `<img src="${matchReport.homeTeamLogo}" alt="${homeTeamName}" style="width: 50px; height: 50px; object-fit: contain; border-radius: 50%;">` :
+            `<span style="font-size: 24px;">🏠</span>`
+          }
+        </div>
+        <h3 style="margin: 0; font-size: clamp(14px, 3vw, 18px);">${homeTeamName}</h3>
       </div>
-      <div class="albaplayer_videos_channel">
-        <a class="button refresh" href="javascript:window.location.reload()">تحديث</a>
-        <div id="showshare" style="display: block;" title="مشاركة">
-          <span href="javascript:void(0)" onclick="document.getElementById('showother').style.display='block';document.getElementById('showshare').style.display='none'">
-            <div class="button share">مشاركة</div>
-          </span>
+      <div style="background: rgba(255,255,255,0.2); padding: 2% 4%; border-radius: 12px; min-width: 120px;">
+        <span style="font-size: clamp(24px, 8vw, 48px); font-weight: bold;">${finalScore}</span>
+      </div>
+      <div style="text-align: center; flex: 1; min-width: 120px;">
+        <div style="width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 2%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.2);">
+          ${matchReport.awayTeamLogo ? 
+            `<img src="${matchReport.awayTeamLogo}" alt="${awayTeamName}" style="width: 50px; height: 50px; object-fit: contain; border-radius: 50%;">` :
+            `<span style="font-size: 24px;">🏃</span>`
+          }
         </div>
-        <div class="showother" id="showother" style="display: none;">
-          <span href="javascript:void(0)" onclick="document.getElementById('showother').style.display='none';document.getElementById('showshare').style.display='block'" title="اغلاق">
-            <div class="button close">اغلاق</div>
-          </span>
-          <div id="albaplayer_share_channel">
-            <div class="share-channel">
-              <div class="albaplayer_share_title">كود التضمين</div>
-              <textarea id="albaplayer_player_share" onclick="this.select();" onfocus="this.select();">&lt;iframe allowfullscreen='true' frameborder='0' height='500px' scrolling='1' src='${iframeData.src}' width='100%'&gt;&lt;/iframe&gt;</textarea>
-              <button class="custom-btn" onclick="document.querySelector('#albaplayer_player_share').select();document.execCommand('copy');">انقر للنسخ</button>
-            </div>
-          </div>
-        </div>
+        <h3 style="margin: 0; font-size: clamp(14px, 3vw, 18px);">${awayTeamName}</h3>
       </div>
     </div>
-    <style>
-      #tme, 
-      #tme_message,
-      .telegram-popup,
-      .telegram-widget,
-      [id*="telegram"],
-      [class*="telegram"],
-      .subscription-popup,
-      .social-popup {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
-      
-      .albaplayer_server-body {
-        position: relative !important;
-        overflow: hidden !important;
-      }
-      
-      div[style*="position: fixed"],
-      div[style*="position: absolute"][style*="bottom"],
-      div[style*="position: absolute"][style*="right"] {
-        display: none !important;
-      }
-    </style>`;
+  </div>
+
+  ${matchReport.events.length > 0 ? `
+  <div style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px);">⚽ أحداث المباراة</h3>
+    ${matchReport.events.slice(0, 8).map(event => `
+      <div style="display: flex; align-items: center; gap: 3%; padding: 2%; margin-bottom: 2%; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${headerColor};">
+        <div style="background: ${headerColor}; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">${event.minute}'</div>
+        <span style="font-size: 20px;">${event.icon}</span>
+        <div style="flex: 1;">
+          <p style="margin: 0; color: #2c3e50; font-weight: bold;">${event.player}</p>
+          <p style="margin: 0; color: #7f8c8d; font-size: 14px;">${event.type}</p>
+        </div>
+      </div>
+    `).join('')}
+  </div>
+  ` : ''}
+  
+  <div style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08); width: 100%;">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px);">📋 معلومات المباراة</h3>
+    
+    <div style="display: block; width: 100%;">
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>🏆 البطولة:</strong> ${competition}</p>
+      </div>
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>📅 التاريخ:</strong> ${publishedDateFormatted}</p>
+      </div>
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>🎯 النتيجة:</strong> ${finalScore}</p>
+      </div>
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>📊 أحداث المباراة:</strong> ${matchReport.events.length} حدث</p>
+      </div>
+      <div style="padding: 3%; background: #f8f9fa; border-radius: 10px; border-left: 4px solid ${headerColor}; margin-bottom: 2%; width: 100%;">
+        <p style="margin: 0; color: #34495e;"><strong>🔄 آخر تحديث:</strong> ${new Date().toLocaleDateString('ar-EG')}، ${new Date().toLocaleTimeString('ar-EG')}</p>
+      </div>
+    </div>
+  </div>
+  
+  <div style="background: #fff3cd; padding: 3%; border-radius: 12px; margin-bottom: 3%; border-left: 4px solid #ffc107;">
+    <h3 style="color: #856404; margin: 0 0 2% 0;">🎯 معلومات عامة</h3>
+    <p style="margin: 0 0 2% 0; color: #856404;">
+      <strong>انتهت المباراة</strong> بين فريق <strong>${homeTeamName}</strong> وفريق <strong>${awayTeamName}</strong>
+      ${competition !== 'غير محدد' ? ` في إطار منافسات <strong>${competition}</strong>` : ''}
+      ${matchReport.found ? ` بنتيجة <strong>${finalScore}</strong>` : ''}.
+    </p>
+    <p style="margin: 0; font-weight: 600; color: #856404;">
+      للحصول على النتائج التفصيلية والملخص الكامل، يرجى متابعة القنوات الرياضية المختصة.
+    </p>
+  </div>
+  
+  <div style="background: #d4edda; padding: 3%; border-radius: 12px; border-left: 4px solid #28a745;">
+    <h3 style="color: #155724; margin: 0 0 2% 0;">🔔 ملاحظة مهمة</h3>
+    <p style="margin: 0; color: #155724;">
+      هذا تقرير تلقائي يتم إنشاؤه لأرشفة معلومات المباراة. للحصول على النتائج الدقيقة والتفاصيل الكاملة، يرجى متابعة القنوات الرياضية الرسمية أو المواقع المتخصصة.
+    </p>
+  </div>
+  
+</div>`;
+
+  return {
+    title: reportTitle,
+    content: reportContent
+  };
 }
 
-async function createPost(match) {
- try {
-   const today = new Date().toLocaleDateString('en-GB', { 
-     year: 'numeric', 
-     month: '2-digit', 
-     day: '2-digit' 
-   }).split('/').reverse().join('-');
-   
-   const title = `${match.homeTeam} vs ${match.awayTeam} - ${match.league} - ${today}`;
-   
-   const exists = await checkPostExists(title);
-   if (exists) {
-     console.log(`Post already exists: ${title}`);
-     
-     try {
-       const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(title)}&key=${API_KEY}`;
-       const response = await axios.get(searchUrl);
-       
-       if (response.data.items && response.data.items.length > 0) {
-         const existingPost = response.data.items[0];
-         await storeUrlMapping(match, existingPost.url, existingPost.published);
-         console.log(`📝 Registered existing post: ${title}`);
-         return { existing: true, title: title, url: existingPost.url };
-       }
-     } catch (error) {
-       console.error('Error registering existing post:', error);
-     }
-     
-     return { skipped: true, reason: 'exists_but_not_found' };
-   }
-   
-   console.log(`Creating post for: ${title}`);
-   
-   const iframeData = await extractIframeFromMatch(match.matchLink);
-   
-   let playerSection;
-   if (iframeData) {
-     const cleanContent = cleanIframeContent(iframeData);
-     playerSection = `
-       <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
-         <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 22px); text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">🎥 مشاهدة المباراة مباشرة</h3>
-         ${cleanContent}
-         <p style="margin-top: 15px; color: #ccc; font-size: 14px;">اضغط على زر التشغيل لبدء المشاهدة</p>
-       </div>`;
-   } else {
-     playerSection = `
-       <div id="match-player" style="text-align: center; margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.15);">
-         <div class="player-container">
-           <h3 style="color: #fff; margin-bottom: 15px; font-size: clamp(18px, 4vw, 20px); text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">⏰ سيتم إضافة بث المباراة قبل موعد المباراة</h3>
-         </div>
-       </div>`;
-   }
-   
-   const content = `
-     <style>
-       @media (max-width: 768px) {
-         .match-teams {
-           flex-direction: column !important;
-           gap: 20px;
-         }
-         .team img {
-           width: 80px !important;
-           height: 80px !important;
-         }
-         .match-time {
-           margin: 0 !important;
-           order: -1;
-         }
-       }
-       @media (max-width: 480px) {
-         .team img {
-           width: 60px !important;
-           height: 60px !important;
-         }
-       }
-       .external-link, .original-link {
-         display: none !important;
-       }
-     </style>
-     
-     <div class="match-details" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; direction: rtl; text-align: center; width: 100%; padding: 15px; background: #ffffff; box-sizing: border-box;">
-       <h2 style="color: #1976d2; margin-bottom: 25px; font-size: clamp(24px, 6vw, 32px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">🏆 ${match.league}</h2>
-       
-       <div class="teams match-teams" style="display: flex; align-items: center; justify-content: space-between; margin: 25px 0; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 20px; box-shadow: 0 6px 15px rgba(0,0,0,0.08); border: 1px solid #dee2e6; flex-wrap: wrap;">
-         <div class="team home" style="text-align: center; flex: 1; min-width: 150px;">
-           ${match.homeTeamLogo ? `<img src="${match.homeTeamLogo}" alt="${match.homeTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
-           <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.homeTeam}</h3>
-         </div>
-         
-         <div class="match-time" style="text-align: center; flex: 0 0 auto; margin: 0 20px; padding: 20px; background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%); border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 2px solid #1976d2; min-width: 150px;">
-           <p style="font-size: clamp(28px, 8vw, 36px); font-weight: bold; color: #1976d2; margin: 8px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">⏰ ${match.time}</p>
-           <p style="font-size: clamp(16px, 4vw, 20px); color: #666; margin: 8px 0; font-weight: 600; background: #e3f2fd; padding: 8px 15px; border-radius: 20px;">اليوم</p>
-         </div>
-         
-         <div class="team away" style="text-align: center; flex: 1; min-width: 150px;">
-           ${match.awayTeamLogo ? `<img src="${match.awayTeamLogo}" alt="${match.awayTeam}" style="width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); object-fit: contain; margin-bottom: 15px; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 3px solid #fff; background: #fff;">` : ''}
-           <h3 style="margin: 0; color: #2c3e50; font-size: clamp(16px, 4vw, 22px); font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.05); word-wrap: break-word;">${match.awayTeam}</h3>
-         </div>
-       </div>
-       
-       <div class="match-info" style="margin: clamp(15px, 4vw, 25px) 0; width: 100%; padding: clamp(15px, 4vw, 25px); background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: clamp(12px, 3vw, 18px); box-shadow: 0 clamp(4px, 1.5vw, 8px) clamp(10px, 3vw, 20px) rgba(102, 126, 234, 0.3); position: relative; overflow: hidden;">
-         <div style="position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none;"></div>
-         <div style="position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 12px); flex-wrap: wrap;">
-           <div style="background: rgba(255,255,255,0.15); padding: clamp(8px, 2vw, 12px); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
-             <span style="font-size: clamp(20px, 5vw, 28px); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">📺</span>
-           </div>
-           <p style="margin: 0; font-size: clamp(14px, 3.5vw, 18px); font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.4); text-align: center; line-height: 1.4; letter-spacing: 0.5px;">
-             <span style="display: block; font-size: clamp(12px, 3vw, 14px); opacity: 0.9; margin-bottom: 2px;">القناة الناقلة</span>
-             <span style="font-size: clamp(16px, 4vw, 20px); font-weight: 700;">${match.broadcaster}</span>
-           </p>
-         </div>
-         <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.7), rgba(255,255,255,0.3));"></div>
-       </div>
-       
-       ${playerSection}
-       
-       <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 15px; border-left: 6px solid #4caf50; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.2);">
-         <p style="margin: 0; color: #2e7d32; font-size: clamp(14px, 4vw, 18px); font-weight: 600; text-shadow: 1px 1px 2px rgba(0,0,0,0.05);">💡 استمتع بمشاهدة المباراة بجودة عالية ومجاناً على موقعنا</p>
-       </div>
-       
-       <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; border-top: 3px solid #17a2b8;">
-         <p style="margin: 0; color: #6c757d; font-size: clamp(12px, 3vw, 14px); font-style: italic;">تابعونا للحصول على أحدث مباريات كرة القدم وأهم الأحداث الرياضية</p>
-       </div>
-     </div>
-   `;
-   
-   const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
-   
-   const postData = {
-     kind: 'blogger#post',
-     blog: { id: BLOG_ID },
-     title: title,
-     content: content
-   };
-   
-   const response = await makeAuthenticatedRequest(url, postData, 'POST');
-   
-   await storeUrlMapping(match, response.data.url, response.data.published);
-   
-   console.log(`✅ Post created: ${response.data.url}`);
-   return { created: true, title: title, url: response.data.url, data: response.data };
- } catch (error) {
-   if (error.response?.status === 403) {
-     const errorMessage = error.response?.data?.error?.message || 'Rate limit exceeded';
-     if (errorMessage.includes('limit') || errorMessage.includes('timeframe')) {
-       console.log(`⏸️  Rate limit hit for: ${match.homeTeam} vs ${match.awayTeam}`);
-       console.log(`⏳ Waiting 5 minutes before retrying...`);
-       await new Promise(resolve => setTimeout(resolve, 300000));
-       
-       try {
-         const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`;
-         const today = new Date().toLocaleDateString('en-GB', { 
-           year: 'numeric', 
-           month: '2-digit', 
-           day: '2-digit' 
-         }).split('/').reverse().join('-');
-         
-         const postData = {
-           kind: 'blogger#post',
-           blog: { id: BLOG_ID },
-           title: `${match.homeTeam} vs ${match.awayTeam} - ${match.league} - ${today}`,
-           content: content
-         };
-         
-         const retryResponse = await makeAuthenticatedRequest(url, postData, 'POST');
-         await storeUrlMapping(match, retryResponse.data.url, retryResponse.data.published);
-         console.log(`✅ Post created after retry: ${retryResponse.data.url}`);
-         return { created: true, title: postData.title, url: retryResponse.data.url, data: retryResponse.data };
-       } catch (retryError) {
-         console.log(`❌ Still rate limited after 5 minutes, skipping: ${match.homeTeam} vs ${match.awayTeam}`);
-         return { skipped: true, reason: 'rate_limit' };
-       }
-     }
-   }
-   
-   console.error('❌ Error creating post:', error.response?.data || error.message);
-   return { error: true, message: error.response?.data || error.message };
- }
-}
-async function createMatchPosts() {
+async function updatePost(postId, newTitle, newContent) {
   try {
-    console.log('🚀 Starting to create match posts with filtering...');
+    const updateData = {
+      title: newTitle,
+      content: newContent
+    };
+    
+    const url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/${postId}`;
+    await makeAuthenticatedRequest(url, updateData, 'PUT');
+    console.log(`✅ Successfully updated post ${postId}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error updating post ${postId}:`, error.response?.data || error.message);
+    return false;
+  }
+}
+
+async function getAllBlogPosts(maxResults = 500) {
+  try {
+    console.log(`Fetching blog posts (max: ${maxResults})`);
+    
+    let allPosts = [];
+    let pageToken = '';
+    let pageCount = 0;
+    
+    do {
+      pageCount++;
+      let url = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts?maxResults=50&key=${API_KEY}`;
+      
+      if (pageToken) {
+        url += `&pageToken=${pageToken}`;
+      }
+      
+      console.log(`Fetching page ${pageCount}...`);
+      const response = await axios.get(url);
+      
+      if (response.data.items) {
+        allPosts = allPosts.concat(response.data.items);
+        console.log(`Added ${response.data.items.length} posts (total: ${allPosts.length})`);
+      }
+      
+      pageToken = response.data.nextPageToken;
+      
+      if (allPosts.length >= maxResults) {
+        allPosts = allPosts.slice(0, maxResults);
+        break;
+      }
+      
+      if (pageToken) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+    } while (pageToken && allPosts.length < maxResults);
+    
+    console.log(`Total posts fetched: ${allPosts.length}`);
+    return allPosts;
+  } catch (error) {
+    console.error('Error fetching blog posts:', error.response?.data || error.message);
+    return [];
+  }
+}
+
+function isMatchPost(postTitle) {
+  const matchPatterns = [
+    /vs\s/i,
+    /\s-\s.*(?:league|cup|championship|liga|premier|serie|bundesliga|ligue)/i,
+    /مباراة/,
+    /ضد/
+  ];
+  
+  return matchPatterns.some(pattern => pattern.test(postTitle));
+}
+
+function extractTeamsFromTitle(title) {
+  let cleanTitle = title.replace(/تقرير المباراة:\s*/g, '').trim();
+  
+  const patterns = [
+    /(.+?)\s+(?:vs|ضد)\s+(.+?)(?:\s+-\s+(.+))?$/i,
+    /(.+?)\s+(?:vs|ضد)\s+(.+)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = cleanTitle.match(pattern);
+    if (match) {
+      return {
+        homeTeam: match[1].trim(),
+        awayTeam: match[2].trim(),
+        league: match[3] ? match[3].trim() : ''
+      };
+    }
+  }
+  
+  return null;
+}
+
+async function main() {
+  try {
+    console.log('🚀 Starting Match Report Extractor (adapted from iframe code)...');
     
     if (!BLOG_ID || !API_KEY || !ACCESS_TOKEN) {
       console.error('❌ Missing required environment variables');
-      console.error('Required: BLOG_ID, API_KEY, ACCESS_TOKEN');
       process.exit(1);
     }
     
-    console.log('✅ All required environment variables found');
-    console.log(`📝 Blog ID: ${BLOG_ID}`);
+    const yesterdayMatches = await fetchMatchesYesterday();
     
-    const todayMatches = await fetchMatches('today');
-    
-    console.log(`\n📊 Match Summary:`);
-    console.log(`   Today: ${todayMatches.length} matches`);
-    
-    const filteredTodayMatches = filterTodayMatches(todayMatches);
-    console.log(`\n🔍 After filtering - Today's current/future matches: ${filteredTodayMatches.length}`);
-    
-    if (filteredTodayMatches.length === 0) {
-      console.log('ℹ️  No current or future matches found for today');
+    if (yesterdayMatches.length === 0) {
+      console.log('❌ No yesterday matches found');
       return;
     }
     
-    let createdCount = 0;
-    let skippedCount = 0;
-    let existingCount = 0;
+    console.log(`\n🎯 Found ${yesterdayMatches.length} yesterday matches, extracting reports...`);
     
-    console.log('\n⚽ Processing today\'s current and future matches...');
-for (const match of filteredTodayMatches) {
-  console.log(`\n⚽ Processing: ${match.homeTeam} vs ${match.awayTeam} at ${match.time}`);
-  const result = await createPost(match);
-  
-  if (result && result.skipped) {
-    skippedCount++;
-  } else if (result && result.existing) {
-    existingCount++;
-  } else if (result && result.created) {
-    createdCount++;
-  }
-  
-  if (result && (result.created || result.existing)) {
-    console.log('⏳ Waiting 30 seconds to respect Blogger rate limits...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
-  } else {
-    console.log('⏳ Waiting 5 seconds before next attempt...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
-  }
-}
+    let processedCount = 0;
     
-    console.log(`\n🎉 Processing Complete!`);
-    console.log(`   ✅ Created ${createdCount} new match posts`);
-    console.log(`   📋 Registered ${existingCount} existing posts`);
-    console.log(`   ⏸️  Skipped ${skippedCount} due to rate limits`);
-    console.log(`   📊 Total processed: ${createdCount + existingCount + skippedCount}`);
-    console.log(`   📝 All current/future posts are now tracked in match-urls.json`);
+    for (const match of yesterdayMatches.slice(0, 5)) { 
+      try {
+        console.log(`\n📋 Processing: ${match.title}`);
+        
+        const matchReport = await extractMatchReportFromMatch(match.matchLink);
+        
+        const report = generateRichMatchReport(matchReport, match);
+        
+        console.log(`📝 Generated report: ${report.title}`);
+        console.log(`📊 Data: Score ${matchReport?.found ? 'YES' : 'NO'}, Events: ${matchReport?.events?.length || 0}, Logos: ${matchReport?.homeTeamLogo ? 'YES' : 'NO'}`);
+        
+        const allPosts = await getAllBlogPosts(20);
+        const matchPosts = allPosts.filter(post => isMatchPost(post.title));
+        
+        let existingPost = null;
+        for (const post of matchPosts) {
+          const teamInfo = extractTeamsFromTitle(post.title);
+          if (teamInfo) {
+            const homeMatch = teamInfo.homeTeam.toLowerCase().includes(match.homeTeam.substring(0, 8).toLowerCase()) ||
+                            match.homeTeam.toLowerCase().includes(teamInfo.homeTeam.substring(0, 8).toLowerCase());
+            
+            const awayMatch = teamInfo.awayTeam.toLowerCase().includes(match.awayTeam.substring(0, 8).toLowerCase()) ||
+                            match.awayTeam.toLowerCase().includes(teamInfo.awayTeam.substring(0, 8).toLowerCase());
+            
+            if (homeMatch && awayMatch) {
+              existingPost = post;
+              console.log(`🔍 Found matching post: "${post.title}" matches "${match.title}"`);
+              break;
+            }
+          }
+        }
+        
+        if (existingPost) {
+          console.log(`🔄 Updating existing post with match report: ${existingPost.title}`);
+          const success = await updatePost(existingPost.id, report.title, report.content);
+          if (success) {
+            processedCount++;
+            console.log(`✅ Successfully updated with real KooraLiveTV match report`);
+          }
+        } else {
+          console.log(`📝 No matching existing post found for ${match.title}`);
+        }
+        
+        console.log('⏳ Waiting 20 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 20000));
+        
+      } catch (error) {
+        console.error(`❌ Error processing ${match.title}:`, error.message);
+      }
+    }
+    
+    console.log(`\n🎉 Match Report Processing Complete!`);
+    console.log(`   ✅ Successfully processed: ${processedCount} matches`);
+    console.log(`   📊 Total matches found: ${yesterdayMatches.length}`);
+    console.log(`   📖 Real match reports extracted from KooraLiveTV`);
+    console.log(`   📱 Posts updated with actual scores, logos, events, and competition info`);
+    console.log(`   🎯 Used the same successful approach as iframe extraction`);
     
   } catch (error) {
-    console.error('❌ Error in createMatchPosts:', error);
+    console.error('💥 Error in main process:', error);
     process.exit(1);
   }
 }
 
-createMatchPosts();
+main();

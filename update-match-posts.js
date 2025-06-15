@@ -310,12 +310,43 @@ function generateStandardMatchReport(teamData, matchInfo, dateCategory, publishe
     content: reportContent
   };
 }
-` : ''}
-`;
 
+// Missing function: generateMatchReport - Adding a placeholder implementation
+function generateMatchReport(matchData, originalTitle, dateCategory) {
+  // Extract team information from original title if not in matchData
+  const teamData = extractTeamsFromTitle(originalTitle) || {
+    homeTeam: matchData.homeTeam || 'الفريق الأول',
+    awayTeam: matchData.awayTeam || 'الفريق الثاني',
+    league: matchData.league || 'مباراة كرة قدم'
+  };
+  
+  // Create match info object
+  const matchInfo = {
+    matchTime: matchData.matchTime || null,
+    broadcaster: matchData.broadcaster || null,
+    stadium: matchData.stadium || null,
+    league: matchData.league || teamData.league
+  };
+  
+  // Use the standard report generator
+  return generateStandardMatchReport(teamData, matchInfo, dateCategory, new Date().toISOString());
+}
+
+// Missing function: searchMatchOnKooraLiveTV - Adding a placeholder implementation
+async function searchMatchOnKooraLiveTV(homeTeam, awayTeam, dateCategory) {
+  // This is a placeholder implementation since the original function wasn't provided
+  console.log(`Searching for match: ${homeTeam} vs ${awayTeam} (${dateCategory})`);
+  
+  // Return a basic structure indicating no data found
   return {
-    title: reportTitle,
-    content: reportContent
+    found: false,
+    homeTeam: homeTeam,
+    awayTeam: awayTeam,
+    homeScore: 0,
+    awayScore: 0,
+    status: 'المباراة انتهت',
+    league: 'مباراة كرة قدم',
+    finalScore: 'غير متوفر'
   };
 }
 

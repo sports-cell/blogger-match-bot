@@ -26,7 +26,6 @@ function getDateCategory(publishedDate) {
   const published = new Date(publishedDate);
   const now = new Date();
   
-  // Set time to midnight for proper day comparison
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const publishedDay = new Date(published.getFullYear(), published.getMonth(), published.getDate());
@@ -41,6 +40,39 @@ function getDateCategory(publishedDate) {
     return 'older';
   } else {
     return 'future';
+  }
+}
+
+function isMatchFinished(timeString, publishedDate) {
+  if (!timeString || timeString === 'TBD' || timeString === 'انتهت') {
+    return true;
+  }
+  
+  try {
+    const publishedTime = new Date(publishedDate);
+    const now = new Date();
+    
+    const timeParts = timeString.match(/(\d{1,2}):(\d{2})/);
+    if (!timeParts) return true;
+    
+    let matchHour = parseInt(timeParts[1]);
+    let matchMinute = parseInt(timeParts[2]);
+    
+    if (timeString.toLowerCase().includes('pm') && matchHour !== 12) {
+      matchHour += 12;
+    } else if (timeString.toLowerCase().includes('am') && matchHour === 12) {
+      matchHour = 0;
+    }
+    
+    const matchDate = new Date(publishedTime);
+    matchDate.setHours(matchHour, matchMinute, 0, 0);
+    
+    const matchEndTime = new Date(matchDate.getTime() + (3 * 60 * 60 * 1000));
+    
+    return now > matchEndTime;
+  } catch (error) {
+    console.error('Error parsing match time:', error);
+    return true;
   }
 }
 
@@ -74,14 +106,12 @@ function extractMatchInfoFromPost(postContent) {
 }
 
 function getTeamLogoUrl(teamName) {
-  // Clean team name for logo search
   const cleanName = teamName.toLowerCase()
     .replace(/\s+(fc|cf|ac|sc|united|city|town|rovers|wanderers|athletic|football|club)$/i, '')
-    .replace(/\s+تحت\s+\d+/g, '') // Remove "under 21" etc in Arabic
-    .replace(/\s+under\s+\d+/gi, '') // Remove "under 21" etc in English
+    .replace(/\s+تحت\s+\d+/g, '') 
+    .replace(/\s+under\s+\d+/gi, '')
     .trim();
   
-  // Try multiple logo sources
   const logoSources = [
     `https://logos-world.net/wp-content/uploads/2020/06/${cleanName.replace(/\s+/g, '-')}-Logo.png`,
     `https://www.thesportsdb.com/images/media/team/badge/${cleanName.replace(/\s+/g, '')}.png`,
@@ -89,7 +119,6 @@ function getTeamLogoUrl(teamName) {
     `https://logoeps.com/wp-content/uploads/2013/03/vector-${cleanName.replace(/\s+/g, '-')}-logo.png`
   ];
   
-  // Return first available or fallback
   return logoSources[0];
 }
 
@@ -124,7 +153,6 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     day: 'numeric'
   });
 
-  // Get team logos
   const homeTeamLogo = getTeamLogoUrl(homeTeam);
   const awayTeamLogo = getTeamLogoUrl(awayTeam);
   
@@ -457,7 +485,6 @@ async function updateMatchPosts() {
       const dateCategory = getDateCategory(post.published);
       console.log(`📂 Date category: ${dateCategory}`);
       
-      // Skip if already a report
       if (post.title.includes('تقرير المباراة') || post.content.includes('match-report')) {
         console.log('✅ Post is already a match report, skipping...');
         skippedCount++;
@@ -470,7 +497,6 @@ async function updateMatchPosts() {
       let shouldUpdate = false;
       let reason = '';
       
-      // Always convert older posts
       if (dateCategory === 'older') {
         shouldUpdate = true;
         reason = 'Post is older than yesterday - converting to report';
@@ -480,7 +506,6 @@ async function updateMatchPosts() {
         shouldUpdate = true;
         reason = 'Yesterday\'s match - converting to report';
       } 
-      // For today's posts, check if match is finished or post is old enough
       else if (dateCategory === 'today') {
         const timeMatch = post.content?.match(/⏰\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i);
         const matchTime = timeMatch ? timeMatch[1] : null;
@@ -494,7 +519,6 @@ async function updateMatchPosts() {
             reason = `Today's match at ${matchTime} is still ongoing/future`;
           }
         } else {
-          // No match time found - convert if post is more than 4 hours old
           if (postAge > 4) {
             shouldUpdate = true;
             reason = `No match time found and post is ${postAge.toFixed(1)} hours old (>4h)`;
@@ -528,7 +552,6 @@ async function updateMatchPosts() {
           skippedCount++;
         }
         
-        // Rate limiting
         console.log('⏳ Waiting 30 seconds...');
         await new Promise(resolve => setTimeout(resolve, 30000));
       } else {

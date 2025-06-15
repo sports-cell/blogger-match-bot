@@ -1,5 +1,4 @@
 const axios = require('axios');
-const fs = require('fs').promises;
 
 const BLOG_ID = process.env.BLOG_ID;
 const API_KEY = process.env.API_KEY;
@@ -30,8 +29,6 @@ function getDateCategory(publishedDate) {
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const publishedDay = new Date(published.getFullYear(), published.getMonth(), published.getDate());
   
-  console.log(`Published: ${publishedDay.toDateString()}, Today: ${today.toDateString()}, Yesterday: ${yesterday.toDateString()}`);
-  
   if (publishedDay.getTime() === today.getTime()) {
     return 'today';
   } else if (publishedDay.getTime() === yesterday.getTime()) {
@@ -40,39 +37,6 @@ function getDateCategory(publishedDate) {
     return 'older';
   } else {
     return 'future';
-  }
-}
-
-function isMatchFinished(timeString, publishedDate) {
-  if (!timeString || timeString === 'TBD' || timeString === 'انتهت') {
-    return true;
-  }
-  
-  try {
-    const publishedTime = new Date(publishedDate);
-    const now = new Date();
-    
-    const timeParts = timeString.match(/(\d{1,2}):(\d{2})/);
-    if (!timeParts) return true;
-    
-    let matchHour = parseInt(timeParts[1]);
-    let matchMinute = parseInt(timeParts[2]);
-    
-    if (timeString.toLowerCase().includes('pm') && matchHour !== 12) {
-      matchHour += 12;
-    } else if (timeString.toLowerCase().includes('am') && matchHour === 12) {
-      matchHour = 0;
-    }
-    
-    const matchDate = new Date(publishedTime);
-    matchDate.setHours(matchHour, matchMinute, 0, 0);
-    
-    const matchEndTime = new Date(matchDate.getTime() + (3 * 60 * 60 * 1000));
-    
-    return now > matchEndTime;
-  } catch (error) {
-    console.error('Error parsing match time:', error);
-    return true;
   }
 }
 
@@ -88,56 +52,51 @@ function extractTeamsFromTitle(title) {
   return null;
 }
 
-function extractMatchInfoFromPost(postContent) {
+function extractDataFromPost(postContent, postTitle) {
+  const teamData = extractTeamsFromTitle(postTitle);
+  if (!teamData) return null;
+
   const timeMatch = postContent.match(/⏰\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i);
   const matchTime = timeMatch ? timeMatch[1] : null;
   
-  const broadcasterMatch = postContent.match(/📺\s*([^<\n]+)/i);
+  const broadcasterMatch = postContent.match(/📺[^<]*?<[^>]*>([^<]+)/i) || 
+                          postContent.match(/القناة الناقلة[^<]*?<[^>]*>([^<]+)/i) ||
+                          postContent.match(/📺\s*([^<\n]+)/i);
   const broadcaster = broadcasterMatch ? broadcasterMatch[1].trim() : null;
   
-  const stadiumMatch = postContent.match(/🏟️\s*([^<\n]+)/i);
-  const stadium = stadiumMatch ? stadiumMatch[1].trim() : null;
+  const homeLogoMatch = postContent.match(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"[^>]*>/gi);
+  let homeTeamLogo = null;
+  let awayTeamLogo = null;
+  
+  if (homeLogoMatch) {
+    homeLogoMatch.forEach(imgTag => {
+      const altMatch = imgTag.match(/alt="([^"]*)"/i);
+      const srcMatch = imgTag.match(/src="([^"]*)"/i);
+      
+      if (altMatch && srcMatch) {
+        const altText = altMatch[1];
+        const src = srcMatch[1];
+        
+        if (altText.includes(teamData.homeTeam) || teamData.homeTeam.includes(altText)) {
+          homeTeamLogo = src;
+        } else if (altText.includes(teamData.awayTeam) || teamData.awayTeam.includes(altText)) {
+          awayTeamLogo = src;
+        }
+      }
+    });
+  }
   
   return {
+    ...teamData,
     matchTime,
     broadcaster,
-    stadium
+    homeTeamLogo,
+    awayTeamLogo
   };
 }
 
-async function getTeamLogoUrl(teamName) {
-  try {
-    const searchUrl = `https://www.kooralivetv.com`;
-    const response = await axios.get(searchUrl);
-    const html = response.data;
-    
-    const imgRegex = /<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"/gi;
-    let match;
-    
-    while ((match = imgRegex.exec(html)) !== null) {
-      const altText = match[1];
-      const srcUrl = match[2];
-      
-      if (altText.includes(teamName) || teamName.includes(altText)) {
-        return srcUrl;
-      }
-    }
-    
-    const teamRegex = new RegExp(`${teamName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*<[^>]*src="([^"]*)"`, 'gi');
-    const teamMatch = teamRegex.exec(html);
-    if (teamMatch) {
-      return teamMatch[1];
-    }
-    
-    return 'https://www.kooralivetv.com/wp-content/uploads/2025/06/default-team.png';
-  } catch (error) {
-    return 'https://www.kooralivetv.com/wp-content/uploads/2025/06/default-team.png';
-  }
-}
-
-async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDate) {
-  const { homeTeam, awayTeam, league } = teamData;
-  const { matchTime, broadcaster, stadium } = matchInfo;
+function generateMatchReport(matchData, dateCategory, publishedDate) {
+  const { homeTeam, awayTeam, league, matchTime, broadcaster, homeTeamLogo, awayTeamLogo } = matchData;
   
   let reportTitle = `تقرير المباراة: ${homeTeam} ضد ${awayTeam}`;
   if (league) {
@@ -166,9 +125,6 @@ async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publi
     day: 'numeric'
   });
 
-  const homeTeamLogo = await getTeamLogoUrl(homeTeam);
-  const awayTeamLogo = await getTeamLogoUrl(awayTeam);
-  
   const templateVersion = "SPORTLIVE_V2_2025";
   
   const reportContent = `<!-- ${templateVersion} -->
@@ -186,8 +142,10 @@ async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publi
       
       <div class="team home-team" style="text-align: center; flex: 1; min-width: 200px;">
         <div class="team-logo" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.2); background: white; border: 3px solid ${headerColor}; overflow: hidden;">
-          <img src="${homeTeamLogo}" alt="${homeTeam}" style="width: 70px; height: 70px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-          <span style="color: ${headerColor}; font-size: 28px; font-weight: bold; display: none;">⚽</span>
+          ${homeTeamLogo ? 
+            `<img src="${homeTeamLogo}" alt="${homeTeam}" style="width: 70px; height: 70px; object-fit: contain;">` :
+            `<span style="color: ${headerColor}; font-size: 28px; font-weight: bold;">⚽</span>`
+          }
         </div>
         <h3 style="color: #2c3e50; margin: 0; font-size: 20px; font-weight: 600; word-wrap: break-word;">${homeTeam}</h3>
         <p style="color: #7f8c8d; margin: 5px 0 0 0; font-size: 14px;">الفريق المضيف</p>
@@ -202,8 +160,10 @@ async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publi
       
       <div class="team away-team" style="text-align: center; flex: 1; min-width: 200px;">
         <div class="team-logo" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.2); background: white; border: 3px solid #e74c3c; overflow: hidden;">
-          <img src="${awayTeamLogo}" alt="${awayTeam}" style="width: 70px; height: 70px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-          <span style="color: #e74c3c; font-size: 28px; font-weight: bold; display: none;">⚽</span>
+          ${awayTeamLogo ? 
+            `<img src="${awayTeamLogo}" alt="${awayTeam}" style="width: 70px; height: 70px; object-fit: contain;">` :
+            `<span style="color: #e74c3c; font-size: 28px; font-weight: bold;">⚽</span>`
+          }
         </div>
         <h3 style="color: #2c3e50; margin: 0; font-size: 20px; font-weight: 600; word-wrap: break-word;">${awayTeam}</h3>
         <p style="color: #7f8c8d; margin: 5px 0 0 0; font-size: 14px;">الفريق الضيف</p>
@@ -259,16 +219,6 @@ async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publi
           <strong style="color: #2c3e50; font-size: 16px;">القناة الناقلة</strong>
         </div>
         <p style="margin: 0; color: #34495e; font-size: 15px;">${broadcaster}</p>
-      </div>
-      ` : ''}
-      
-      ${stadium ? `
-      <div class="info-card" style="padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor}; grid-column: 1 / -1;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-          <span style="font-size: 20px;">🏟️</span>
-          <strong style="color: #2c3e50; font-size: 16px;">الملعب</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: 15px;">${stadium}</p>
       </div>
       ` : ''}
       
@@ -499,9 +449,6 @@ async function updateMatchPosts() {
         continue;
       }
       
-      const postAge = (new Date() - new Date(post.published)) / (1000 * 60 * 60);
-      console.log(`⏰ Post age: ${postAge.toFixed(1)} hours`);
-      
       let shouldUpdate = false;
       let reason = '';
       
@@ -521,13 +468,12 @@ async function updateMatchPosts() {
       console.log(`🎯 Decision: ${shouldUpdate ? 'CONVERT TO REPORT' : 'KEEP AS IS'} - ${reason}`);
       
       if (shouldUpdate) {
-        const teamData = extractTeamsFromTitle(post.title);
+        const matchData = extractDataFromPost(post.content || '', post.title);
         
-        if (teamData) {
-          console.log(`🔄 Converting to report: ${teamData.homeTeam} vs ${teamData.awayTeam}`);
+        if (matchData) {
+          console.log(`🔄 Converting to report: ${matchData.homeTeam} vs ${matchData.awayTeam}`);
           
-          const matchInfo = extractMatchInfoFromPost(post.content || '');
-          const report = await generateCleanMatchReport(teamData, matchInfo, dateCategory, post.published);
+          const report = generateMatchReport(matchData, dateCategory, post.published);
           
           const success = await updatePost(post.id, report.title, report.content);
           
@@ -538,7 +484,7 @@ async function updateMatchPosts() {
             errorCount++;
           }
         } else {
-          console.log('❌ Could not extract team names from title');
+          console.log('❌ Could not extract match data from post');
           skippedCount++;
         }
         

@@ -53,123 +53,76 @@ function extractTeamsFromTitle(title) {
   return null;
 }
 
-async function searchMatchOnKooraLive(homeTeam, awayTeam) {
+async function findMatchUrlOnKooraLive(homeTeam, awayTeam) {
   try {
-    console.log(`🔍 Searching for match: ${homeTeam} vs ${awayTeam}`);
+    console.log(`🔍 Searching for match URL: ${homeTeam} vs ${awayTeam}`);
     
-    const searchUrl = `https://www.kooralivetv.com`;
-    const response = await axios.get(searchUrl);
-    const $ = cheerio.load(response.data);
+    const searchQuery = `${homeTeam} ${awayTeam}`.replace(/\s+/g, '-').toLowerCase();
+    const possibleUrls = [
+      `https://www.kooralivetv.com/matches/${encodeURIComponent(homeTeam)}-و-${encodeURIComponent(awayTeam)}-في-أوروبا-يو/`,
+      `https://www.kooralivetv.com/matches/${searchQuery}/`,
+      `https://www.kooralivetv.com/matches/${encodeURIComponent(homeTeam)}-vs-${encodeURIComponent(awayTeam)}/`
+    ];
     
-    let matchData = {
-      homeTeam,
-      awayTeam,
-      homeScore: 0,
-      awayScore: 0,
-      homeTeamLogo: null,
-      awayTeamLogo: null,
-      status: 'انتهت المباراة',
-      events: [],
-      found: false
-    };
-    
-    const matches = [];
-    $('.match-item, .AY_Match, [class*="match"]').each((index, element) => {
-      const matchElement = $(element);
-      const matchText = matchElement.text();
-      
-      if (matchText.includes(homeTeam) || matchText.includes(awayTeam)) {
-        console.log(`Found potential match: ${matchText}`);
-        
-        const homeLogoImg = matchElement.find('img').first();
-        const awayLogoImg = matchElement.find('img').last();
-        
-        if (homeLogoImg.length) {
-          const logoSrc = homeLogoImg.attr('src') || homeLogoImg.attr('data-src');
-          if (logoSrc && !logoSrc.includes('data:image')) {
-            matchData.homeTeamLogo = logoSrc.startsWith('http') ? logoSrc : `https://www.kooralivetv.com${logoSrc}`;
-          }
+    for (const url of possibleUrls) {
+      try {
+        const response = await axios.get(url, { timeout: 10000 });
+        if (response.status === 200 && response.data.includes(homeTeam) && response.data.includes(awayTeam)) {
+          console.log(`✅ Found match URL: ${url}`);
+          return url;
         }
-        
-        if (awayLogoImg.length && awayLogoImg[0] !== homeLogoImg[0]) {
-          const logoSrc = awayLogoImg.attr('src') || awayLogoImg.attr('data-src');
-          if (logoSrc && !logoSrc.includes('data:image')) {
-            matchData.awayTeamLogo = logoSrc.startsWith('http') ? logoSrc : `https://www.kooralivetv.com${logoSrc}`;
-          }
-        }
-        
-        const scoreMatch = matchText.match(/(\d+)\s*-\s*(\d+)/);
-        if (scoreMatch) {
-          matchData.homeScore = parseInt(scoreMatch[1]);
-          matchData.awayScore = parseInt(scoreMatch[2]);
-          matchData.found = true;
-          console.log(`✅ Found score: ${matchData.homeScore}-${matchData.awayScore}`);
-        }
-        
-        const matchLink = matchElement.find('a').attr('href') || matchElement.attr('href');
-        if (matchLink) {
-          const fullLink = matchLink.startsWith('http') ? matchLink : `https://www.kooralivetv.com${matchLink}`;
-          console.log(`🔗 Found match link: ${fullLink}`);
-          matches.push(fullLink);
-        }
-      }
-    });
-    
-    if (matches.length > 0 && !matchData.found) {
-      console.log(`📄 Checking match page for detailed data...`);
-      const detailedData = await getMatchDetails(matches[0], homeTeam, awayTeam);
-      if (detailedData.found) {
-        matchData = { ...matchData, ...detailedData };
+      } catch (error) {
+        continue;
       }
     }
     
-    if (!matchData.homeTeamLogo || !matchData.awayTeamLogo) {
-      const logoResults = await getTeamLogos(homeTeam, awayTeam);
-      matchData.homeTeamLogo = matchData.homeTeamLogo || logoResults.homeLogo;
-      matchData.awayTeamLogo = matchData.awayTeamLogo || logoResults.awayLogo;
-    }
-    
-    return matchData;
+    console.log(`❌ No match URL found for ${homeTeam} vs ${awayTeam}`);
+    return null;
     
   } catch (error) {
-    console.error(`❌ Error searching match:`, error.message);
-    return {
-      homeTeam,
-      awayTeam,
-      homeScore: 0,
-      awayScore: 0,
-      homeTeamLogo: null,
-      awayTeamLogo: null,
-      status: 'انتهت المباراة',
-      events: [],
-      found: false
-    };
+    console.error(`❌ Error finding match URL:`, error.message);
+    return null;
   }
 }
 
-async function getMatchDetails(matchUrl, homeTeam, awayTeam) {
+async function scrapeRichMatchData(matchUrl) {
   try {
-    console.log(`📊 Getting match details from: ${matchUrl}`);
+    console.log(`📊 Scraping rich match data from: ${matchUrl}`);
     
-    const response = await axios.get(matchUrl);
+    const response = await axios.get(matchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 15000
+    });
+    
     const $ = cheerio.load(response.data);
     
-    let matchData = {
+    const matchData = {
+      homeTeam: '',
+      awayTeam: '',
       homeScore: 0,
       awayScore: 0,
-      homeTeamLogo: null,
-      awayTeamLogo: null,
+      homeTeamLogo: '',
+      awayTeamLogo: '',
+      homeLineup: [],
+      awayLineup: [],
+      homeSubstitutes: [],
+      awaySubstitutes: [],
       events: [],
+      matchInfo: {},
       found: false
     };
     
-    const scoreText = $('body').text();
-    const scoreMatch = scoreText.match(/(\d+)\s*-\s*(\d+)/);
+    const finalScoreText = $('body').text();
+    const scoreMatch = finalScoreText.match(/نتيجة المباراة.*?(\w+)\s+(\d+)\s*-\s*(\d+)\s+(\w+)/);
     if (scoreMatch) {
-      matchData.homeScore = parseInt(scoreMatch[1]);
-      matchData.awayScore = parseInt(scoreMatch[2]);
+      matchData.homeTeam = scoreMatch[1];
+      matchData.homeScore = parseInt(scoreMatch[2]);
+      matchData.awayScore = parseInt(scoreMatch[3]);
+      matchData.awayTeam = scoreMatch[4];
       matchData.found = true;
-      console.log(`✅ Extracted score: ${matchData.homeScore}-${matchData.awayScore}`);
+      console.log(`✅ Found score: ${matchData.homeTeam} ${matchData.homeScore}-${matchData.awayScore} ${matchData.awayTeam}`);
     }
     
     $('img').each((index, element) => {
@@ -177,67 +130,109 @@ async function getMatchDetails(matchUrl, homeTeam, awayTeam) {
       const alt = img.attr('alt') || '';
       const src = img.attr('src') || img.attr('data-src');
       
-      if (src && !src.includes('data:image') && alt) {
-        if (alt.includes(homeTeam) || homeTeam.includes(alt)) {
-          matchData.homeTeamLogo = src.startsWith('http') ? src : `https://www.kooralivetv.com${src}`;
-          console.log(`🏠 Found home team logo: ${matchData.homeTeamLogo}`);
-        } else if (alt.includes(awayTeam) || awayTeam.includes(alt)) {
-          matchData.awayTeamLogo = src.startsWith('http') ? src : `https://www.kooralivetv.com${src}`;
-          console.log(`🏃 Found away team logo: ${matchData.awayTeamLogo}`);
+      if (src && alt && src.includes('kooralivetv.com') && !src.includes('event')) {
+        if (alt.includes('تحت') || alt.includes('U19') || alt.includes('U20') || alt.includes('U21')) {
+          if (!matchData.homeTeamLogo) {
+            matchData.homeTeamLogo = src;
+            console.log(`🏠 Found home team logo: ${src}`);
+          } else if (!matchData.awayTeamLogo && src !== matchData.homeTeamLogo) {
+            matchData.awayTeamLogo = src;
+            console.log(`🏃 Found away team logo: ${src}`);
+          }
         }
       }
     });
     
-    $('.event, [class*="goal"], [class*="card"], [class*="substitution"]').each((index, element) => {
-      const eventElement = $(element);
-      const eventText = eventElement.text().trim();
-      
-      if (eventText.length > 0) {
-        matchData.events.push(eventText);
+    const homeLineupSection = $('body').html().split('4-4-2')[1];
+    const awayLineupSection = $('body').html().split('4-1-4-1')[1];
+    
+    if (homeLineupSection) {
+      const homePlayerRegex = /(\d+)\s*([^\d\n]+?)\s*(?:حارس مرمى|الدفاع|الوسط|الهجوم)/g;
+      let homeMatch;
+      while ((homeMatch = homePlayerRegex.exec(homeLineupSection)) !== null && matchData.homeLineup.length < 11) {
+        matchData.homeLineup.push({
+          number: homeMatch[1],
+          name: homeMatch[2].trim(),
+          position: homeMatch[3] || 'لاعب'
+        });
       }
-    });
+    }
+    
+    if (awayLineupSection) {
+      const awayPlayerRegex = /(\d+)\s*([^\d\n]+?)\s*(?:حارس مرمى|الدفاع|الوسط|الهجوم)/g;
+      let awayMatch;
+      while ((awayMatch = awayPlayerRegex.exec(awayLineupSection)) !== null && matchData.awayLineup.length < 11) {
+        matchData.awayLineup.push({
+          number: awayMatch[1],
+          name: awayMatch[2].trim(),
+          position: awayMatch[3] || 'لاعب'
+        });
+      }
+    }
+    
+    const eventRegex = /(\d+)\s*([^!]+?)!\[([^!]+)!\]\([^)]+\)/g;
+    let eventMatch;
+    while ((eventMatch = eventRegex.exec(response.data)) !== null) {
+      const minute = eventMatch[1];
+      const player = eventMatch[2].trim();
+      const eventType = eventMatch[3];
+      
+      let eventIcon = '⚽';
+      let eventDescription = 'حدث';
+      
+      if (eventType.includes('هدف')) {
+        eventIcon = '⚽';
+        eventDescription = 'هدف';
+      } else if (eventType.includes('بطاقة صفراء')) {
+        eventIcon = '🟨';
+        eventDescription = 'بطاقة صفراء';
+      } else if (eventType.includes('بطاقة حمراء')) {
+        eventIcon = '🟥';
+        eventDescription = 'بطاقة حمراء';
+      } else if (eventType.includes('قائمة البدلاء')) {
+        eventIcon = '🔄';
+        eventDescription = 'تبديل';
+      }
+      
+      matchData.events.push({
+        minute,
+        player,
+        type: eventDescription,
+        icon: eventIcon
+      });
+    }
+    
+    const tableMatch = response.data.match(/بطاقة المباراة[\s\S]*?<\/table>/);
+    if (tableMatch) {
+      const tableHtml = tableMatch[0];
+      const $table = cheerio.load(tableHtml);
+      
+      $table('tr').each((index, row) => {
+        const cells = $table(row).find('td');
+        if (cells.length >= 2) {
+          const key = $table(cells[0]).text().trim();
+          const value = $table(cells[1]).text().trim();
+          matchData.matchInfo[key] = value;
+        }
+      });
+    }
+    
+    console.log(`📊 Match data extracted: ${matchData.events.length} events, ${matchData.homeLineup.length} home players, ${matchData.awayLineup.length} away players`);
     
     return matchData;
     
   } catch (error) {
-    console.error(`❌ Error getting match details:`, error.message);
+    console.error(`❌ Error scraping match data:`, error.message);
     return { found: false };
-  }
-}
-
-async function getTeamLogos(homeTeam, awayTeam) {
-  try {
-    const response = await axios.get('https://www.kooralivetv.com');
-    const $ = cheerio.load(response.data);
-    
-    let homeLogo = null;
-    let awayLogo = null;
-    
-    $('img').each((index, element) => {
-      const img = $(element);
-      const alt = img.attr('alt') || '';
-      const src = img.attr('src') || img.attr('data-src');
-      
-      if (src && !src.includes('data:image') && alt) {
-        if (alt.includes(homeTeam) || homeTeam.includes(alt)) {
-          homeLogo = src.startsWith('http') ? src : `https://www.kooralivetv.com${src}`;
-        } else if (alt.includes(awayTeam) || awayTeam.includes(alt)) {
-          awayLogo = src.startsWith('http') ? src : `https://www.kooralivetv.com${src}`;
-        }
-      }
-    });
-    
-    return { homeLogo, awayLogo };
-    
-  } catch (error) {
-    console.error(`❌ Error getting team logos:`, error.message);
-    return { homeLogo: null, awayLogo: null };
   }
 }
 
 function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDate) {
   const { homeTeam, awayTeam, league } = teamInfo;
-  const { homeScore, awayScore, homeTeamLogo, awayTeamLogo, status, events, found } = matchData;
+  const { 
+    homeScore, awayScore, homeTeamLogo, awayTeamLogo, 
+    homeLineup, awayLineup, events, matchInfo, found 
+  } = matchData;
   
   let reportTitle = `تقرير المباراة: ${homeTeam} ضد ${awayTeam}`;
   if (league) {
@@ -247,9 +242,6 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
   const headerColor = dateCategory === 'today' ? '#27ae60' : 
                      dateCategory === 'yesterday' ? '#f39c12' : '#95a5a6';
   
-  let matchStatus = status || 'انتهت المباراة';
-  let statusIcon = found ? '✅' : '📋';
-  
   const publishedDateFormatted = new Date(publishedDate).toLocaleDateString('ar-EG', {
     year: 'numeric',
     month: 'long',
@@ -257,172 +249,53 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
   });
 
   const finalScore = found ? `${homeScore} - ${awayScore}` : 'غير متوفر';
-  const templateVersion = "SPORTLIVE_V3_2025";
+  const templateVersion = "SPORTLIVE_RICH_V4_2025";
   
   const reportContent = `<!-- ${templateVersion} -->
-<div class="match-report" style="max-width: 90%; margin: 2% auto; padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border: 1px solid #e9ecef;">
+<div class="match-report" style="max-width: 95%; margin: 2% auto; padding: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border: 1px solid #e9ecef;">
   
-  <div class="header" style="text-align: center; margin-bottom: 4%; padding-bottom: 3%; border-bottom: 3px solid ${headerColor};">
+  <div class="header" style="text-align: center; margin-bottom: 3%; padding-bottom: 2%; border-bottom: 3px solid ${headerColor};">
     <h1 style="color: #2c3e50; margin: 0; font-size: clamp(20px, 5vw, 28px); font-weight: 700;">
-      📊 تقرير المباراة
+      📊 تقرير المباراة الشامل
     </h1>
     <p style="color: #7f8c8d; margin: 1% 0 0 0; font-size: clamp(14px, 3vw, 16px);">${league || 'مباراة كرة قدم'}</p>
   </div>
   
-  <div class="score-section" style="background: linear-gradient(135deg, ${headerColor} 0%, #34495e 100%); color: white; padding: 4%; border-radius: 12px; margin-bottom: 4%; text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.15);">
-    <h2 style="margin: 0 0 3% 0; font-size: clamp(18px, 4vw, 24px); font-weight: 600;">النتيجة النهائية</h2>
-    <div style="display: flex; justify-content: center; align-items: center; gap: 5%; flex-wrap: wrap;">
+  <div class="score-section" style="background: linear-gradient(135deg, ${headerColor} 0%, #34495e 100%); color: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.15);">
+    <h2 style="margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 24px); font-weight: 600;">النتيجة النهائية</h2>
+    <div style="display: flex; justify-content: center; align-items: center; gap: 3%; flex-wrap: wrap;">
       <div style="text-align: center; flex: 1; min-width: 120px;">
+        <div style="width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 2%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px);">
+          ${homeTeamLogo ? 
+            `<img src="${homeTeamLogo}" alt="${homeTeam}" style="width: 50px; height: 50px; object-fit: contain; border-radius: 50%;">` :
+            `<span style="font-size: 24px;">🏠</span>`
+          }
+        </div>
         <h3 style="margin: 0; font-size: clamp(14px, 3vw, 18px); opacity: 0.9;">${homeTeam}</h3>
       </div>
-      <div style="background: rgba(255,255,255,0.2); padding: 3% 5%; border-radius: 12px; backdrop-filter: blur(10px);">
+      <div style="background: rgba(255,255,255,0.2); padding: 2% 4%; border-radius: 12px; backdrop-filter: blur(10px); min-width: 120px;">
         <span style="font-size: clamp(24px, 8vw, 48px); font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">${finalScore}</span>
       </div>
       <div style="text-align: center; flex: 1; min-width: 120px;">
+        <div style="width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 2%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px);">
+          ${awayTeamLogo ? 
+            `<img src="${awayTeamLogo}" alt="${awayTeam}" style="width: 50px; height: 50px; object-fit: contain; border-radius: 50%;">` :
+            `<span style="font-size: 24px;">🏃</span>`
+          }
+        </div>
         <h3 style="margin: 0; font-size: clamp(14px, 3vw, 18px); opacity: 0.9;">${awayTeam}</h3>
       </div>
     </div>
   </div>
-  
-  <div class="teams-container" style="background: white; padding: 4%; border-radius: 12px; margin-bottom: 4%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <div class="teams-display" style="display: flex; justify-content: space-between; align-items: center; gap: 5%; flex-wrap: wrap;">
-      
-      <div class="team home-team" style="text-align: center; flex: 1; min-width: 200px;">
-        <div class="team-logo" style="width: 25%; height: auto; aspect-ratio: 1; border-radius: 50%; margin: 0 auto 3%; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(0,0,0,0.15); background: white; border: 4px solid ${headerColor}; overflow: hidden; max-width: 100px;">
-          ${homeTeamLogo ? 
-            `<img src="${homeTeamLogo}" alt="${homeTeam}" style="width: 90%; height: 90%; object-fit: contain;">` :
-            `<span style="color: ${headerColor}; font-size: clamp(20px, 4vw, 32px); font-weight: bold;">⚽</span>`
-          }
-        </div>
-        <h3 style="color: #2c3e50; margin: 0; font-size: clamp(16px, 3vw, 20px); font-weight: 600; word-wrap: break-word;">${homeTeam}</h3>
-        <p style="color: #7f8c8d; margin: 2% 0 0 0; font-size: clamp(12px, 2.5vw, 14px);">الفريق المضيف</p>
-        ${found ? `<div style="margin-top: 3%; padding: 2% 4%; background: ${homeScore > awayScore ? '#e8f5e8' : homeScore < awayScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; color: ${homeScore > awayScore ? '#2e7d32' : homeScore < awayScore ? '#c62828' : '#f57c00'}; font-weight: bold; font-size: clamp(18px, 4vw, 24px);">${homeScore}</div>` : ''}
-      </div>
-      
-      <div class="vs-section" style="text-align: center; margin: 0 3%;">
-        <div style="background: ${headerColor}; color: white; width: clamp(60px, 12vw, 80px); height: clamp(60px, 12vw, 80px); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 2%; font-weight: bold; font-size: clamp(14px, 3vw, 20px); box-shadow: 0 8px 20px rgba(0,0,0,0.2);">
-          VS
-        </div>
-        <p style="color: #95a5a6; margin: 0; font-size: clamp(10px, 2vw, 12px);">${publishedDateFormatted}</p>
-      </div>
-      
-      <div class="team away-team" style="text-align: center; flex: 1; min-width: 200px;">
-        <div class="team-logo" style="width: 25%; height: auto; aspect-ratio: 1; border-radius: 50%; margin: 0 auto 3%; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(0,0,0,0.15); background: white; border: 4px solid #e74c3c; overflow: hidden; max-width: 100px;">
-          ${awayTeamLogo ? 
-            `<img src="${awayTeamLogo}" alt="${awayTeam}" style="width: 90%; height: 90%; object-fit: contain;">` :
-            `<span style="color: #e74c3c; font-size: clamp(20px, 4vw, 32px); font-weight: bold;">⚽</span>`
-          }
-        </div>
-        <h3 style="color: #2c3e50; margin: 0; font-size: clamp(16px, 3vw, 20px); font-weight: 600; word-wrap: break-word;">${awayTeam}</h3>
-        <p style="color: #7f8c8d; margin: 2% 0 0 0; font-size: clamp(12px, 2.5vw, 14px);">الفريق الضيف</p>
-        ${found ? `<div style="margin-top: 3%; padding: 2% 4%; background: ${awayScore > homeScore ? '#e8f5e8' : awayScore < homeScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; color: ${awayScore > homeScore ? '#2e7d32' : awayScore < homeScore ? '#c62828' : '#f57c00'}; font-weight: bold; font-size: clamp(18px, 4vw, 24px);">${awayScore}</div>` : ''}
-      </div>
-    </div>
-  </div>
-  
-  <div class="status-section" style="text-align: center; margin-bottom: 4%;">
-    <div style="display: inline-block; padding: 3% 6%; background: ${headerColor}; color: white; border-radius: 50px; font-weight: 600; font-size: clamp(14px, 3vw, 18px); box-shadow: 0 8px 20px rgba(0,0,0,0.2);">
-      ${statusIcon} ${matchStatus}
-    </div>
-  </div>
 
   ${events.length > 0 ? `
-  <div class="events-section" style="background: white; padding: 4%; border-radius: 12px; margin-bottom: 4%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 3% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">⚽</span>
-      أحداث المباراة
-    </h3>
-    <div class="events-list">
-      ${events.slice(0, 10).map(event => `
-        <div style="padding: 2% 3%; margin-bottom: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid ${headerColor};">
-          <p style="margin: 0; color: #2c3e50; font-size: clamp(13px, 2.8vw, 15px);">${event}</p>
-        </div>
-      `).join('')}
-    </div>
-  </div>
-  ` : ''}
-  
-  <div class="match-info" style="background: white; padding: 4%; border-radius: 12px; margin-bottom: 4%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 3% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">📋</span>
-      معلومات المباراة
-    </h3>
-    
-    <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 3%;">
-      
-      <div class="info-card" style="padding: 4%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 3%; margin-bottom: 2%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">🏆</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">البطولة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${league || 'غير محدد'}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 4%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 3%; margin-bottom: 2%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">📅</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">التاريخ</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${publishedDateFormatted}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 4%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 3%; margin-bottom: 2%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">🎯</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">النتيجة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${finalScore}</p>
-      </div>
-      
-      <div class="info-card" style="padding: 4%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
-        <div style="display: flex; align-items: center; gap: 3%; margin-bottom: 2%;">
-          <span style="font-size: clamp(16px, 4vw, 20px);">📊</span>
-          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">الحالة</strong>
-        </div>
-        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${found ? 'بيانات متوفرة' : 'بيانات محدودة'}</p>
-      </div>
-      
-    </div>
-  </div>
-  
-  <div class="summary-section" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); padding: 4%; border-radius: 12px; margin-bottom: 4%; border: 1px solid #e9ecef;">
-    <h3 style="color: ${headerColor}; margin: 0 0 3% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
-      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">🎯</span>
-      ملخص المباراة
-    </h3>
-    
-    <div style="color: #2c3e50; line-height: 1.8; font-size: clamp(14px, 3vw, 16px);">
-      <p style="margin: 0 0 3% 0;">
-        <strong style="color: ${headerColor};">انتهت المباراة</strong> بين فريق <strong>${homeTeam}</strong> وفريق <strong>${awayTeam}</strong> 
-        في إطار منافسات <strong>${league || 'البطولة'}</strong>
-        ${found ? ` بنتيجة <strong style="color: ${headerColor};">${finalScore}</strong>` : ''}.
-      </p>
-      
-      ${found ? `
-        <div style="padding: 3%; background: ${homeScore > awayScore ? '#e8f5e8' : awayScore > homeScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; border-left: 4px solid ${homeScore > awayScore ? '#4caf50' : awayScore > homeScore ? '#f44336' : '#ff9800'}; margin: 3% 0;">
-          <p style="margin: 0; color: ${homeScore > awayScore ? '#2e7d32' : awayScore > homeScore ? '#c62828' : '#f57c00'}; font-weight: bold;">
-            ${homeScore > awayScore ? `🏆 فوز ${homeTeam} بنتيجة ${homeScore}-${awayScore}` : 
-              awayScore > homeScore ? `🏆 فوز ${awayTeam} بنتيجة ${awayScore}-${homeScore}` : 
-              `🤝 تعادل الفريقين بنتيجة ${homeScore}-${awayScore}`}
-          </p>
-        </div>
-      ` : `
-        <div style="padding: 3%; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; margin: 3% 0;">
-          <p style="margin: 0; color: #856404; font-weight: bold;">
-            📊 للحصول على النتائج التفصيلية والملخص الكامل، يرجى متابعة القنوات الرياضية المختصة.
-          </p>
-        </div>
-      `}
-    </div>
-  </div>
-  
-  <div class="links-section" style="background: white; padding: 4%; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
-    <h3 style="color: #2c3e50; margin: 0 0 3% 0; font-size: clamp(16px, 3.5vw, 20px); display: flex; align-items: center; gap: 2%;">
+  <div class="events-section" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(16px, 3.5vw, 20px); display: flex; align-items: center; gap: 2%;">
       <span style="background: ${headerColor}; color: white; width: clamp(28px, 5.5vw, 36px); height: clamp(28px, 5.5vw, 36px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 2.5vw, 16px);">🔗</span>
       روابط سريعة
     </h3>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 3%;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 2%;">
       <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: ${headerColor}; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
         <span style="font-size: clamp(14px, 3.5vw, 18px);">🏠</span>
         الصفحة الرئيسية
@@ -447,25 +320,11 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
 }
 
 @media (max-width: 768px) {
-  .teams-display {
-    flex-direction: column !important;
-    gap: 6% !important;
-  }
-  
-  .vs-section {
-    order: 2;
-    margin: 4% 0 !important;
-  }
-  
-  .home-team {
-    order: 1;
-  }
-  
-  .away-team {
-    order: 3;
-  }
-  
   .info-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .lineups-section > div {
     grid-template-columns: 1fr !important;
   }
   
@@ -473,7 +332,7 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
     grid-template-columns: 1fr !important;
   }
   
-  .score-section div {
+  .score-section > div {
     flex-direction: column !important;
     gap: 4% !important;
   }
@@ -481,12 +340,8 @@ function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDat
 
 @media (max-width: 480px) {
   .match-report {
-    margin: 2% !important;
-    padding: 4% !important;
-  }
-  
-  .teams-container, .match-info, .summary-section, .links-section, .events-section, .score-section {
-    padding: 4% !important;
+    margin: 1% !important;
+    padding: 3% !important;
   }
 }
 </style>
@@ -574,7 +429,7 @@ function isMatchPost(postTitle) {
 
 async function updateMatchPosts() {
   try {
-    console.log('🚀 Starting to create rich match reports with real data...');
+    console.log('🚀 Starting to create RICH match reports with real KooraLiveTV data...');
     
     if (!BLOG_ID || !API_KEY || !ACCESS_TOKEN) {
       console.error('❌ Missing required environment variables');
@@ -610,12 +465,12 @@ async function updateMatchPosts() {
       let reason = '';
       
       if (post.title.includes('تقرير المباراة') || post.content.includes('match-report')) {
-        if (!post.content.includes('SPORTLIVE_V3_2025')) {
-          console.log('🔄 Post is old report template - updating to rich data report...');
+        if (!post.content.includes('SPORTLIVE_RICH_V4_2025')) {
+          console.log('🔄 Post is old report template - updating to RICH data report...');
           shouldUpdate = true;
-          reason = 'Updating old report to rich data template';
+          reason = 'Updating old report to RICH data template with lineups and events';
         } else {
-          console.log('✅ Post already has rich data template, skipping...');
+          console.log('✅ Post already has RICH data template, skipping...');
           skippedCount++;
           continue;
         }
@@ -624,17 +479,17 @@ async function updateMatchPosts() {
       if (!shouldUpdate) {
         if (dateCategory === 'older') {
           shouldUpdate = true;
-          reason = 'Post is older than yesterday - converting to rich report';
+          reason = 'Post is older than yesterday - converting to RICH report';
         } 
         else if (dateCategory === 'yesterday') {
           shouldUpdate = true;
-          reason = 'Yesterday\'s match - converting to rich report';
+          reason = 'Yesterday\'s match - converting to RICH report';
         } 
         else if (dateCategory === 'today') {
           const postAge = (new Date() - new Date(post.published)) / (1000 * 60 * 60);
           if (postAge > 4) {
             shouldUpdate = true;
-            reason = `Today's match is ${postAge.toFixed(1)} hours old - converting to rich report`;
+            reason = `Today's match is ${postAge.toFixed(1)} hours old - converting to RICH report`;
           } else {
             shouldUpdate = false;
             reason = `Today's match is only ${postAge.toFixed(1)} hours old - keeping as live`;
@@ -648,11 +503,16 @@ async function updateMatchPosts() {
         const teamInfo = extractTeamsFromTitle(post.title);
         
         if (teamInfo) {
-          console.log(`🔍 Searching for match data: ${teamInfo.homeTeam} vs ${teamInfo.awayTeam}`);
+          console.log(`🔍 Searching for RICH match data: ${teamInfo.homeTeam} vs ${teamInfo.awayTeam}`);
           
-          const matchData = await searchMatchOnKooraLive(teamInfo.homeTeam, teamInfo.awayTeam);
+          const matchUrl = await findMatchUrlOnKooraLive(teamInfo.homeTeam, teamInfo.awayTeam);
           
-          console.log(`📊 Match data found: Score ${matchData.homeScore}-${matchData.awayScore}, Logos: ${matchData.homeTeamLogo ? 'YES' : 'NO'}, Events: ${matchData.events.length}`);
+          let matchData = { found: false };
+          if (matchUrl) {
+            matchData = await scrapeRichMatchData(matchUrl);
+          }
+          
+          console.log(`📊 RICH data found: Score ${matchData.homeScore || 0}-${matchData.awayScore || 0}, Events: ${matchData.events?.length || 0}, Lineups: ${matchData.homeLineup?.length || 0}+${matchData.awayLineup?.length || 0}`);
           
           const report = generateRichMatchReport(matchData, teamInfo, dateCategory, post.published);
           
@@ -660,7 +520,7 @@ async function updateMatchPosts() {
           
           if (success) {
             updatedCount++;
-            console.log('✅ Post converted to rich data report successfully');
+            console.log('✅ Post converted to RICH data report successfully');
           } else {
             errorCount++;
           }
@@ -676,8 +536,8 @@ async function updateMatchPosts() {
       }
     }
     
-    console.log(`\n🎉 Rich Report Generation Complete!`);
-    console.log(`   ✅ Converted to rich reports: ${updatedCount} posts`);
+    console.log(`\n🎉 RICH Report Generation Complete!`);
+    console.log(`   ✅ Converted to RICH reports: ${updatedCount} posts`);
     console.log(`   ⏭️ Skipped (already updated or too recent): ${skippedCount} posts`);
     console.log(`   ❌ Errors: ${errorCount} posts`);
     console.log(`   📊 Total processed: ${updatedCount + skippedCount + errorCount}`);
@@ -688,4 +548,233 @@ async function updateMatchPosts() {
   }
 }
 
-updateMatchPosts();
+updateMatchPosts(); 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">⚽</span>
+      أحداث المباراة المهمة
+    </h3>
+    <div class="events-timeline">
+      ${events.slice(0, 15).map(event => `
+        <div style="display: flex; align-items: center; gap: 3%; padding: 2%; margin-bottom: 2%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid ${headerColor};">
+          <div style="background: ${headerColor}; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">${event.minute}'</div>
+          <span style="font-size: 20px;">${event.icon}</span>
+          <div style="flex: 1;">
+            <p style="margin: 0; color: #2c3e50; font-size: clamp(13px, 2.8vw, 15px); font-weight: bold;">${event.player}</p>
+            <p style="margin: 0; color: #7f8c8d; font-size: clamp(11px, 2.5vw, 13px);">${event.type}</p>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  ` : ''}
+
+  ${homeLineup.length > 0 || awayLineup.length > 0 ? `
+  <div class="lineups-section" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">👥</span>
+      تشكيلة الفريقين
+    </h3>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3%; margin-top: 2%;">
+      ${homeLineup.length > 0 ? `
+      <div style="padding: 3%; background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); border-radius: 10px; border-left: 4px solid #4caf50;">
+        <h4 style="margin: 0 0 2% 0; color: #2e7d32; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${homeTeam}</h4>
+        ${homeLineup.slice(0, 11).map(player => `
+          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(46, 125, 50, 0.1);">
+            <div style="background: #4caf50; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
+            <div style="flex: 1;">
+              <p style="margin: 0; color: #2e7d32; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
+              <p style="margin: 0; color: #66bb6a; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+      
+      ${awayLineup.length > 0 ? `
+      <div style="padding: 3%; background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-radius: 10px; border-left: 4px solid #f44336;">
+        <h4 style="margin: 0 0 2% 0; color: #c62828; font-size: clamp(16px, 3.5vw, 20px); text-align: center;">${awayTeam}</h4>
+        ${awayLineup.slice(0, 11).map(player => `
+          <div style="display: flex; align-items: center; gap: 2%; padding: 1% 0; border-bottom: 1px solid rgba(198, 40, 40, 0.1);">
+            <div style="background: #f44336; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${player.number}</div>
+            <div style="flex: 1;">
+              <p style="margin: 0; color: #c62828; font-size: clamp(12px, 2.5vw, 14px); font-weight: bold;">${player.name}</p>
+              <p style="margin: 0; color: #ef5350; font-size: clamp(10px, 2vw, 12px);">${player.position}</p>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+    </div>
+  </div>
+  ` : ''}
+  
+  <div class="match-info" style="background: white; padding: 3%; border-radius: 12px; margin-bottom: 3%; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">📋</span>
+      معلومات المباراة
+    </h3>
+    
+    <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2%;">
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">🏆</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">البطولة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${league || 'غير محدد'}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">📅</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">التاريخ</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${publishedDateFormatted}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">🎯</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">النتيجة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${finalScore}</p>
+      </div>
+      
+      <div class="info-card" style="padding: 3%; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; border-left: 4px solid ${headerColor};">
+        <div style="display: flex; align-items: center; gap: 2%; margin-bottom: 1%;">
+          <span style="font-size: clamp(16px, 4vw, 20px);">📊</span>
+          <strong style="color: #2c3e50; font-size: clamp(14px, 3vw, 16px);">أحداث المباراة</strong>
+        </div>
+        <p style="margin: 0; color: #34495e; font-size: clamp(13px, 2.8vw, 15px);">${events.length} حدث</p>
+      </div>
+      
+    </div>
+  </div>
+  
+  <div class="summary-section" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); padding: 3%; border-radius: 12px; margin-bottom: 3%; border: 1px solid #e9ecef;">
+    <h3 style="color: ${headerColor}; margin: 0 0 2% 0; font-size: clamp(18px, 4vw, 22px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(30px, 6vw, 40px); height: clamp(30px, 6vw, 40px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(14px, 3vw, 18px);">🎯</span>
+      ملخص المباراة
+    </h3>
+    
+    <div style="color: #2c3e50; line-height: 1.8; font-size: clamp(14px, 3vw, 16px);">
+      <p style="margin: 0 0 2% 0;">
+        <strong style="color: ${headerColor};">انتهت المباراة</strong> بين فريق <strong>${homeTeam}</strong> وفريق <strong>${awayTeam}</strong> 
+        في إطار منافسات <strong>${league || 'البطولة'}</strong>
+        ${found ? ` بنتيجة <strong style="color: ${headerColor};">${finalScore}</strong>` : ''}.
+      </p>
+      
+      ${found && events.length > 0 ? `
+        <div style="padding: 2%; background: ${homeScore > awayScore ? '#e8f5e8' : awayScore > homeScore ? '#ffebee' : '#fff3e0'}; border-radius: 8px; border-left: 4px solid ${homeScore > awayScore ? '#4caf50' : awayScore > homeScore ? '#f44336' : '#ff9800'}; margin: 2% 0;">
+          <p style="margin: 0; color: ${homeScore > awayScore ? '#2e7d32' : awayScore > homeScore ? '#c62828' : '#f57c00'}; font-weight: bold;">
+            ${homeScore > awayScore ? `🏆 فوز ${homeTeam} بنتيجة ${homeScore}-${awayScore}` : 
+              awayScore > homeScore ? `🏆 فوز ${awayTeam} بنتيجة ${awayScore}-${homeScore}` : 
+              `🤝 تعادل الفريقين بنتيجة ${homeScore}-${awayScore}`}
+          </p>
+          <p style="margin: 1% 0 0 0; color: #666; font-size: clamp(12px, 2.5vw, 14px);">
+            شهدت المباراة ${events.length} حدث مهم مع عروض مثيرة من الفريقين.
+          </p>
+        </div>
+      ` : `
+        <div style="padding: 2%; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; margin: 2% 0;">
+          <p style="margin: 0; color: #856404; font-weight: bold;">
+            📊 للحصول على المزيد من التفاصيل والإحصائيات، يرجى متابعة القنوات الرياضية المختصة.
+          </p>
+        </div>
+      `}
+    </div>
+  </div>
+  
+<div class="links-section" style="background: white; padding: 3%; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+    <h3 style="color: #2c3e50; margin: 0 0 2% 0; font-size: clamp(16px, 3.5vw, 20px); display: flex; align-items: center; gap: 2%;">
+      <span style="background: ${headerColor}; color: white; width: clamp(28px, 5.5vw, 36px); height: clamp(28px, 5.5vw, 36px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 2.5vw, 16px);">🔗</span>
+      روابط سريعة
+    </h3>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 2%;">
+      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: ${headerColor}; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
+        <span style="font-size: clamp(14px, 3.5vw, 18px);">🏠</span>
+        الصفحة الرئيسية
+      </a>
+      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #34495e; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
+        <span style="font-size: clamp(14px, 3.5vw, 18px);">⚽</span>
+        مباريات أخرى
+      </a>
+      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #e74c3c; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
+        <span style="font-size: clamp(14px, 3.5vw, 18px);">📺</span>
+        البث المباشر
+      </a>
+      <a href="/" style="display: flex; align-items: center; gap: 2%; padding: 3% 4%; background: #8e44ad; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: clamp(12px, 2.8vw, 14px);">
+        <span style="font-size: clamp(14px, 3.5vw, 18px);">📊</span>
+        الإحصائيات
+      </a>
+    </div>
+  </div>
+  
+  <div class="footer-section" style="text-align: center; margin-top: 3%; padding: 2%; background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); color: white; border-radius: 12px;">
+    <p style="margin: 0; font-size: clamp(12px, 2.5vw, 14px); opacity: 0.9;">
+      📱 تابعونا للحصول على آخر أخبار كرة القدم ونتائج المباريات لحظة بلحظة
+    </p>
+    <div style="margin-top: 1%; display: flex; justify-content: center; gap: 3%; flex-wrap: wrap;">
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">⚽ كرة القدم</span>
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📺 بث مباشر</span>
+      <span style="background: rgba(255,255,255,0.2); padding: 1% 2%; border-radius: 20px; font-size: clamp(10px, 2vw, 12px);">📊 إحصائيات</span>
+    </div>
+  </div>
+  
+</div>
+
+<style>
+.match-report a:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
+}
+
+.match-report .info-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  transition: all 0.3s ease;
+}
+
+.match-report .events-timeline > div:hover {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
+  transform: translateX(5px);
+  transition: all 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .lineups-section > div {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .links-section div {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .score-section > div {
+    flex-direction: column !important;
+    gap: 4% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .match-report {
+    margin: 1% !important;
+    padding: 3% !important;
+  }
+  
+  .links-section div {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .links-section div {
+    grid-template-columns: 1fr !important;
+  }
+}
+</style>

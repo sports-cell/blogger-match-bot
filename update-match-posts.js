@@ -42,14 +42,28 @@ function getDateCategory(publishedDate) {
 }
 
 function extractTeamsFromTitle(title) {
-  const vsMatch = title.match(/(.+?)\s+(?:vs|ضد)\s+(.+?)(?:\s+-\s+(.+))?$/i);
-  if (vsMatch) {
-    return {
-      homeTeam: vsMatch[1].trim(),
-      awayTeam: vsMatch[2].trim(),
-      league: vsMatch[3] ? vsMatch[3].trim() : ''
-    };
+  let cleanTitle = title.replace(/تقرير المباراة:\s*/g, '').trim();
+  console.log(`🧹 Cleaned title: "${cleanTitle}"`);
+  
+  const patterns = [
+    /(.+?)\s+(?:vs|ضد)\s+(.+?)(?:\s+-\s+(.+))?$/i,
+    /(.+?)\s+(?:vs|ضد)\s+(.+)/i,
+    /^(.+?)\s+-\s+(.+?)\s+-\s+(.+)$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = cleanTitle.match(pattern);
+    if (match) {
+      console.log(`✅ Pattern matched: ${pattern}`);
+      return {
+        homeTeam: match[1].trim(),
+        awayTeam: match[2].trim(),
+        league: match[3] ? match[3].trim() : ''
+      };
+    }
   }
+  
+  console.log(`❌ No pattern matched for title: "${cleanTitle}"`);
   return null;
 }
 
@@ -222,17 +236,37 @@ async function scrapeRichMatchData(matchUrl) {
     return matchData;
     
   } catch (error) {
-    console.error(`❌ Error scraping match data:`, error.message);
-    return { found: false };
+     console.error(`❌ Error scraping match data:`, error.message);
+    return { 
+      homeTeam: '',
+      awayTeam: '',
+      homeScore: 0,
+      awayScore: 0,
+      homeTeamLogo: '',
+      awayTeamLogo: '',
+      homeLineup: [],
+      awayLineup: [],
+      events: [],
+      matchInfo: {},
+      found: false 
+    };
   }
 }
 
 function generateRichMatchReport(matchData, teamInfo, dateCategory, publishedDate) {
   const { homeTeam, awayTeam, league } = teamInfo;
   const { 
-    homeScore, awayScore, homeTeamLogo, awayTeamLogo, 
-    homeLineup, awayLineup, events, matchInfo, found 
-  } = matchData;
+    homeScore = 0, 
+    awayScore = 0, 
+    homeTeamLogo = '', 
+    awayTeamLogo = '', 
+    homeLineup = [], 
+    awayLineup = [], 
+    events = [], 
+    matchInfo = {}, 
+    found = false 
+  } = matchData || {};
+
   
   let reportTitle = `تقرير المباراة: ${homeTeam} ضد ${awayTeam}`;
   if (league) {

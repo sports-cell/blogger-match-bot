@@ -105,24 +105,37 @@ function extractMatchInfoFromPost(postContent) {
   };
 }
 
-function getTeamLogoUrl(teamName) {
-  const cleanName = teamName.toLowerCase()
-    .replace(/\s+(fc|cf|ac|sc|united|city|town|rovers|wanderers|athletic|football|club)$/i, '')
-    .replace(/\s+تحت\s+\d+/g, '') 
-    .replace(/\s+under\s+\d+/gi, '')
-    .trim();
-  
-  const logoSources = [
-    `https://logos-world.net/wp-content/uploads/2020/06/${cleanName.replace(/\s+/g, '-')}-Logo.png`,
-    `https://www.thesportsdb.com/images/media/team/badge/${cleanName.replace(/\s+/g, '')}.png`,
-    `https://images.fotmob.com/image_resources/logo/teamlogo/${cleanName.replace(/\s+/g, '_')}.png`,
-    `https://logoeps.com/wp-content/uploads/2013/03/vector-${cleanName.replace(/\s+/g, '-')}-logo.png`
-  ];
-  
-  return logoSources[0];
+async function getTeamLogoUrl(teamName) {
+  try {
+    const searchUrl = `https://www.kooralivetv.com`;
+    const response = await axios.get(searchUrl);
+    const html = response.data;
+    
+    const imgRegex = /<img[^>]*alt="([^"]*)"[^>]*src="([^"]*)"/gi;
+    let match;
+    
+    while ((match = imgRegex.exec(html)) !== null) {
+      const altText = match[1];
+      const srcUrl = match[2];
+      
+      if (altText.includes(teamName) || teamName.includes(altText)) {
+        return srcUrl;
+      }
+    }
+    
+    const teamRegex = new RegExp(`${teamName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*<[^>]*src="([^"]*)"`, 'gi');
+    const teamMatch = teamRegex.exec(html);
+    if (teamMatch) {
+      return teamMatch[1];
+    }
+    
+    return 'https://www.kooralivetv.com/wp-content/uploads/2025/06/default-team.png';
+  } catch (error) {
+    return 'https://www.kooralivetv.com/wp-content/uploads/2025/06/default-team.png';
+  }
 }
 
-function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDate) {
+async function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDate) {
   const { homeTeam, awayTeam, league } = teamData;
   const { matchTime, broadcaster, stadium } = matchInfo;
   
@@ -153,13 +166,14 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     day: 'numeric'
   });
 
-  const homeTeamLogo = getTeamLogoUrl(homeTeam);
-  const awayTeamLogo = getTeamLogoUrl(awayTeam);
+  const homeTeamLogo = await getTeamLogoUrl(homeTeam);
+  const awayTeamLogo = await getTeamLogoUrl(awayTeam);
   
-  const reportContent = `
+  const templateVersion = "SPORTLIVE_V2_2025";
+  
+  const reportContent = `<!-- ${templateVersion} -->
 <div class="match-report" style="max-width: 800px; margin: 20px auto; padding: 20px; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border: 1px solid #e9ecef;">
   
-  <!-- Header Section -->
   <div class="header" style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid ${headerColor};">
     <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: 700;">
       📊 تقرير المباراة
@@ -167,11 +181,9 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     <p style="color: #7f8c8d; margin: 10px 0 0 0; font-size: 16px;">${league || 'مباراة كرة قدم'}</p>
   </div>
   
-  <!-- Teams Display -->
   <div class="teams-container" style="background: white; padding: 30px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
     <div class="teams-display" style="display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap;">
       
-      <!-- Home Team -->
       <div class="team home-team" style="text-align: center; flex: 1; min-width: 200px;">
         <div class="team-logo" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.2); background: white; border: 3px solid ${headerColor}; overflow: hidden;">
           <img src="${homeTeamLogo}" alt="${homeTeam}" style="width: 70px; height: 70px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -181,7 +193,6 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
         <p style="color: #7f8c8d; margin: 5px 0 0 0; font-size: 14px;">الفريق المضيف</p>
       </div>
       
-      <!-- VS Section -->
       <div class="vs-section" style="text-align: center; margin: 0 20px;">
         <div style="background: ${headerColor}; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-weight: bold; font-size: 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
           VS
@@ -189,7 +200,6 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
         <p style="color: #95a5a6; margin: 0; font-size: 12px;">${publishedDateFormatted}</p>
       </div>
       
-      <!-- Away Team -->
       <div class="team away-team" style="text-align: center; flex: 1; min-width: 200px;">
         <div class="team-logo" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.2); background: white; border: 3px solid #e74c3c; overflow: hidden;">
           <img src="${awayTeamLogo}" alt="${awayTeam}" style="width: 70px; height: 70px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -202,14 +212,12 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     </div>
   </div>
   
-  <!-- Match Status -->
   <div class="status-section" style="text-align: center; margin-bottom: 30px;">
     <div style="display: inline-block; padding: 15px 30px; background: ${headerColor}; color: white; border-radius: 50px; font-weight: 600; font-size: 16px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
       ${statusIcon} ${matchStatus}
     </div>
   </div>
   
-  <!-- Match Information -->
   <div class="match-info" style="background: white; padding: 25px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
     <h3 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 20px; display: flex; align-items: center; gap: 10px;">
       <span style="background: ${headerColor}; color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">📋</span>
@@ -267,7 +275,6 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     </div>
   </div>
   
-  <!-- Match Summary -->
   <div class="summary-section" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #e9ecef;">
     <h3 style="color: ${headerColor}; margin: 0 0 15px 0; font-size: 20px; display: flex; align-items: center; gap: 10px;">
       <span style="background: ${headerColor}; color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">🎯</span>
@@ -295,7 +302,6 @@ function generateCleanMatchReport(teamData, matchInfo, dateCategory, publishedDa
     </div>
   </div>
   
-  <!-- Quick Links -->
   <div class="links-section" style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
     <h3 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 18px; display: flex; align-items: center; gap: 10px;">
       <span style="background: ${headerColor}; color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">🔗</span>
@@ -485,8 +491,10 @@ async function updateMatchPosts() {
       const dateCategory = getDateCategory(post.published);
       console.log(`📂 Date category: ${dateCategory}`);
       
-      if (post.title.includes('تقرير المباراة') || post.content.includes('match-report')) {
-        console.log('✅ Post is already a match report, skipping...');
+      if (post.title.includes('تقرير المباراة') || 
+          post.content.includes('match-report') || 
+          post.content.includes('SPORTLIVE_V2_2025')) {
+        console.log('✅ Post already has new template, skipping...');
         skippedCount++;
         continue;
       }
@@ -501,30 +509,16 @@ async function updateMatchPosts() {
         shouldUpdate = true;
         reason = 'Post is older than yesterday - converting to report';
       } 
-      // Convert yesterday's posts
       else if (dateCategory === 'yesterday') {
         shouldUpdate = true;
         reason = 'Yesterday\'s match - converting to report';
       } 
       else if (dateCategory === 'today') {
-        const timeMatch = post.content?.match(/⏰\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i);
-        const matchTime = timeMatch ? timeMatch[1] : null;
-        
-        if (matchTime) {
-          const isFinished = isMatchFinished(matchTime, post.published);
-          if (isFinished) {
-            shouldUpdate = true;
-            reason = `Today's match at ${matchTime} has finished`;
-          } else {
-            reason = `Today's match at ${matchTime} is still ongoing/future`;
-          }
+        if (postAge > 3) {
+          shouldUpdate = true;
+          reason = `Today's match is ${postAge.toFixed(1)} hours old - converting to report`;
         } else {
-          if (postAge > 4) {
-            shouldUpdate = true;
-            reason = `No match time found and post is ${postAge.toFixed(1)} hours old (>4h)`;
-          } else {
-            reason = `No match time found but post is only ${postAge.toFixed(1)} hours old (<4h)`;
-          }
+          reason = `Today's match is only ${postAge.toFixed(1)} hours old - keeping as live`;
         }
       }
       
@@ -537,7 +531,7 @@ async function updateMatchPosts() {
           console.log(`🔄 Converting to report: ${teamData.homeTeam} vs ${teamData.awayTeam}`);
           
           const matchInfo = extractMatchInfoFromPost(post.content || '');
-          const report = generateCleanMatchReport(teamData, matchInfo, dateCategory, post.published);
+          const report = await generateCleanMatchReport(teamData, matchInfo, dateCategory, post.published);
           
           const success = await updatePost(post.id, report.title, report.content);
           

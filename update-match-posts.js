@@ -26,9 +26,12 @@ function getDateCategory(publishedDate) {
   const published = new Date(publishedDate);
   const now = new Date();
   
+  // Set time to midnight for proper day comparison
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const publishedDay = new Date(published.getFullYear(), published.getMonth(), published.getDate());
+  
+  console.log(`Published: ${publishedDay.toDateString()}, Today: ${today.toDateString()}, Yesterday: ${yesterday.toDateString()}`);
   
   if (publishedDay.getTime() === today.getTime()) {
     return 'today';
@@ -464,18 +467,41 @@ async function updateMatchPosts() {
       const postAge = (new Date() - new Date(post.published)) / (1000 * 60 * 60);
       console.log(`⏰ Post age: ${postAge.toFixed(1)} hours`);
       
-      // Only update older posts or yesterday's posts
       let shouldUpdate = false;
       let reason = '';
       
+      // Always convert older posts
       if (dateCategory === 'older') {
         shouldUpdate = true;
         reason = 'Post is older than yesterday - converting to report';
-      } else if (dateCategory === 'yesterday') {
+      } 
+      // Convert yesterday's posts
+      else if (dateCategory === 'yesterday') {
         shouldUpdate = true;
         reason = 'Yesterday\'s match - converting to report';
-      } else {
-        reason = 'Post is too recent - keeping as live post';
+      } 
+      // For today's posts, check if match is finished or post is old enough
+      else if (dateCategory === 'today') {
+        const timeMatch = post.content?.match(/⏰\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i);
+        const matchTime = timeMatch ? timeMatch[1] : null;
+        
+        if (matchTime) {
+          const isFinished = isMatchFinished(matchTime, post.published);
+          if (isFinished) {
+            shouldUpdate = true;
+            reason = `Today's match at ${matchTime} has finished`;
+          } else {
+            reason = `Today's match at ${matchTime} is still ongoing/future`;
+          }
+        } else {
+          // No match time found - convert if post is more than 4 hours old
+          if (postAge > 4) {
+            shouldUpdate = true;
+            reason = `No match time found and post is ${postAge.toFixed(1)} hours old (>4h)`;
+          } else {
+            reason = `No match time found but post is only ${postAge.toFixed(1)} hours old (<4h)`;
+          }
+        }
       }
       
       console.log(`🎯 Decision: ${shouldUpdate ? 'CONVERT TO REPORT' : 'KEEP AS IS'} - ${reason}`);

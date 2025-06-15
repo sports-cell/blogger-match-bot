@@ -441,28 +441,37 @@ async function updateMatchPosts() {
       const dateCategory = getDateCategory(post.published);
       console.log(`📂 Date category: ${dateCategory}`);
       
-      if (post.title.includes('تقرير المباراة') || 
-          post.content.includes('match-report') || 
-          post.content.includes('SPORTLIVE_V2_2025')) {
-        console.log('✅ Post already has new template, skipping...');
-        skippedCount++;
-        continue;
+      if (post.title.includes('تقرير المباراة') || post.content.includes('match-report')) {
+        if (!post.content.includes('SPORTLIVE_V2_2025')) {
+          console.log('🔄 Post is old report template - updating to new design...');
+          shouldUpdate = true;
+          reason = 'Updating old report to new template';
+        } else {
+          console.log('✅ Post already has new template, skipping...');
+          skippedCount++;
+          continue;
+        }
       }
       
-      let shouldUpdate = false;
-      let reason = '';
-      
-      if (dateCategory === 'older') {
-        shouldUpdate = true;
-        reason = 'Post is older than yesterday - converting to report';
-      } 
-      else if (dateCategory === 'yesterday') {
-        shouldUpdate = true;
-        reason = 'Yesterday\'s match - converting to report';
-      } 
-      else if (dateCategory === 'today') {
-        shouldUpdate = false;
-        reason = `Today's match - keeping as live post`;
+      if (!shouldUpdate) {
+        if (dateCategory === 'older') {
+          shouldUpdate = true;
+          reason = 'Post is older than yesterday - converting to report';
+        } 
+        else if (dateCategory === 'yesterday') {
+          shouldUpdate = true;
+          reason = 'Yesterday\'s match - converting to report';
+        } 
+        else if (dateCategory === 'today') {
+          const postAge = (new Date() - new Date(post.published)) / (1000 * 60 * 60);
+          if (postAge > 4) {
+            shouldUpdate = true;
+            reason = `Today's match is ${postAge.toFixed(1)} hours old - converting to report`;
+          } else {
+            shouldUpdate = false;
+            reason = `Today's match is only ${postAge.toFixed(1)} hours old - keeping as live`;
+          }
+        }
       }
       
       console.log(`🎯 Decision: ${shouldUpdate ? 'CONVERT TO REPORT' : 'KEEP AS IS'} - ${reason}`);

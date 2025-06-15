@@ -51,47 +51,25 @@ function getDateCategory(publishedDate) {
 
 async function checkPostExists(postUrl) {
   try {
-    let postId = null;
+    const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts?key=${API_KEY}`;
+    const response = await axios.get(searchUrl);
     
-    if (postUrl.includes('/posts/')) {
-      const matches = postUrl.match(/\/posts\/(\d+)/);
-      postId = matches ? matches[1] : null;
-    } else {
-      const urlParts = postUrl.split('/');
-      const fileName = urlParts[urlParts.length - 1];
-      const postTitle = fileName.replace('.html', '').replace(/-/g, ' ');
+    if (response.data.items && response.data.items.length > 0) {
+      const exactMatch = response.data.items.find(post => post.url === postUrl);
       
-      const searchUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/search?q=${encodeURIComponent(postTitle)}&key=${API_KEY}`;
-      const response = await axios.get(searchUrl);
-      
-      if (response.data.items && response.data.items.length > 0) {
-        const exactMatch = response.data.items.find(post => post.url === postUrl);
-        postId = exactMatch ? exactMatch.id : response.data.items[0].id;
+      if (exactMatch) {
+        const dateCategory = getDateCategory(exactMatch.published);
+        return { 
+          exists: true, 
+          post: exactMatch,
+          dateCategory,
+          isReport: exactMatch.title.includes('تقرير المباراة') || exactMatch.content.includes('match-report')
+        };
       }
     }
     
-    if (!postId) {
-      return { exists: false, reason: 'Could not extract post ID' };
-    }
-    
-    const checkUrl = `https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/${postId}?key=${API_KEY}`;
-    const response = await axios.get(checkUrl);
-    
-    if (response.data && response.data.id) {
-      const dateCategory = getDateCategory(response.data.published);
-      return { 
-        exists: true, 
-        post: response.data,
-        dateCategory,
-        isReport: response.data.title.includes('تقرير المباراة') || response.data.content.includes('match-report')
-      };
-    }
-    
-    return { exists: false, reason: 'Post not found' };
+    return { exists: false, reason: 'Post not found in blog' };
   } catch (error) {
-    if (error.response?.status === 404) {
-      return { exists: false, reason: 'Post deleted or not found (404)' };
-    }
     console.warn(`⚠️ Error checking post ${postUrl}:`, error.message);
     return { exists: false, reason: error.message };
   }

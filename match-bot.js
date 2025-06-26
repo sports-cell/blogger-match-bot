@@ -113,7 +113,7 @@ async function searchKooraLiveTVForTeams(homeTeam, awayTeam) {
     
     for (const searchTerm of searchTerms) {
       try {
-        const searchUrl = 'https://www.kooralivetv.com/matches-yesterday/';
+        const searchUrl = 'https://www.koraas.com/matches-yesterday/';
         console.log(`   🔍 Searching on: ${searchUrl}`);
         
         const response = await axios.get(corsProxy + encodeURIComponent(searchUrl), {
@@ -139,7 +139,7 @@ async function searchKooraLiveTVForTeams(homeTeam, awayTeam) {
                 (decodedHref.toLowerCase().includes(awayTeam.toLowerCase()) || 
                  decodedHref.toLowerCase().includes(awayTeam.substring(0, 8).toLowerCase()))) {
               
-              matchUrl = href.startsWith('http') ? href : 'https://www.kooralivetv.com' + href;
+              matchUrl = href.startsWith('http') ? href : 'https://www.koraas.com' + href;
               console.log(`   ✅ Found match URL: ${matchUrl}`);
               return false;
             }
